@@ -1,10 +1,8 @@
 use serde::Deserialize;
 use std::collections::HashMap;
 use tauri::image::Image;
-use tauri::menu::{MenuBuilder, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Listener, LogicalSize, Manager, PhysicalPosition, Runtime, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
-use tauri_plugin_updater::UpdaterExt;
+use tauri::{AppHandle, Emitter, Listener, LogicalSize, Manager, PhysicalPosition, PhysicalSize, Runtime, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 
 mod tray_icon_rgba;
 
@@ -23,7 +21,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .invoke_handler(tauri::generate_handler![sub2api_request])
+        .invoke_handler(tauri::generate_handler![sub2api_request, tray_command])
         .setup(|app| {
             let handle = app.handle().clone();
             if let Some(window) = app.get_webview_window("main") {
@@ -33,44 +31,12 @@ pub fn run() {
                 let _ = window.set_size(LogicalSize::new(184.0, 132.0));
             }
 
-            let show_monitor_item = MenuItem::with_id(app, "show_monitor", "显示监控面板", true, None::<&str>)?;
-            let settings_item = MenuItem::with_id(app, "open_settings", "设置", true, None::<&str>)?;
-            let check_update_item = MenuItem::with_id(app, "check_update", "检查更新", true, None::<&str>)?;
-            let version_item = MenuItem::with_id(app, "version", format!("当前版本 v{}", env!("CARGO_PKG_VERSION")), false, None::<&str>)?;
-            let quit_item = MenuItem::with_id(app, "quit", "退出 Token Orb", true, None::<&str>)?;
-            let menu = MenuBuilder::new(app)
-                .item(&show_monitor_item)
-                .item(&settings_item)
-                .item(&check_update_item)
-                .item(&version_item)
-                .separator()
-                .item(&quit_item)
-                .build()?;
-
-            let event_check_update_item = check_update_item.clone();
-            let event_version_item = version_item.clone();
-            app.listen("token-orb-update-status", move |event| {
-                set_tray_update_status(&event_check_update_item, &event_version_item, read_update_available(event.payload()));
-            });
-
             let update_window_handle = app.handle().clone();
             app.listen("token-orb-open-update", move |_| {
                 open_update_window(&update_window_handle);
             });
 
-            let startup_check_update_item = check_update_item.clone();
-            let startup_version_item = version_item.clone();
-            let startup_handle = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                if let Ok(updater) = startup_handle.updater() {
-                    if let Ok(update) = updater.check().await {
-                        set_tray_update_status(&startup_check_update_item, &startup_version_item, update.is_some());
-                    }
-                }
-            });
-
             TrayIconBuilder::with_id("main")
-                .menu(&menu)
                 .icon(Image::new(
                     tray_icon_rgba::TRAY_ICON_RGBA,
                     tray_icon_rgba::TRAY_ICON_WIDTH,
@@ -78,13 +44,6 @@ pub fn run() {
                 ))
                 .show_menu_on_left_click(false)
                 .tooltip("Token Orb")
-                .on_menu_event(move |app, event| match event.id().as_ref() {
-                    "show_monitor" => toggle_monitor(app, None),
-                    "open_settings" => open_settings(app),
-                    "check_update" => open_update_window(app),
-                    "quit" => app.exit(0),
-                    _ => {}
-                })
                 .on_tray_icon_event(move |_tray, event| {
                     if let TrayIconEvent::Click {
                         button,
@@ -93,8 +52,13 @@ pub fn run() {
                         ..
                     } = event
                     {
-                        if button == MouseButton::Left && button_state == MouseButtonState::Up {
-                            toggle_monitor(&handle, tray_anchor(&rect));
+                        if button_state != MouseButtonState::Up {
+                            return;
+                        }
+                        match button {
+                            MouseButton::Left => toggle_monitor(&handle, Some(rect)),
+                            MouseButton::Right => open_tray_menu(&handle, rect),
+                            _ => {}
                         }
                     }
                 })
@@ -103,6 +67,28 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running token orb");
+}
+
+#[tauri::command]
+fn tray_command(app: AppHandle, command: String) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("tray-menu") {
+        let _ = window.hide();
+    }
+
+    match command.as_str() {
+        "monitor" => {
+            let tray_rect = app
+                .tray_by_id("main")
+                .and_then(|tray| tray.rect().ok().flatten());
+            toggle_monitor(&app, tray_rect);
+        }
+        "settings" => open_settings(&app),
+        "update" => open_update_window(&app),
+        "quit" => app.exit(0),
+        _ => return Err(format!("未知托盘命令: {command}")),
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -183,34 +169,12 @@ fn read_error_message(value: &serde_json::Value) -> Option<String> {
     None
 }
 
-fn read_update_available(payload: &str) -> bool {
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(payload) else {
-        return false;
-    };
-
-    value
-        .as_bool()
-        .or_else(|| value.get("available").and_then(serde_json::Value::as_bool))
-        .unwrap_or(false)
-}
-
-fn set_tray_update_status<R: Runtime>(check_update_item: &MenuItem<R>, version_item: &MenuItem<R>, available: bool) {
-    if available {
-        let _ = check_update_item.set_text("🟠 有版本更新");
-        let _ = version_item.set_text(format!("当前版本 v{}", env!("CARGO_PKG_VERSION")));
-        return;
-    }
-
-    let _ = check_update_item.set_text("检查更新");
-    let _ = version_item.set_text(format!("当前版本 v{}", env!("CARGO_PKG_VERSION")));
-}
-
-fn toggle_monitor<R: Runtime>(app: &AppHandle<R>, anchor: Option<PhysicalPosition<i32>>) {
+fn toggle_monitor<R: Runtime>(app: &AppHandle<R>, tray_rect: Option<tauri::Rect>) {
     if let Some(window) = app.get_webview_window("platform") {
         if window.is_visible().unwrap_or(false) {
             let _ = window.hide();
         } else {
-            position_monitor(&window, anchor);
+            position_monitor(app, &window, tray_rect);
             let _ = window.show();
             let _ = window.set_focus();
         }
@@ -219,7 +183,7 @@ fn toggle_monitor<R: Runtime>(app: &AppHandle<R>, anchor: Option<PhysicalPositio
 
     let window = WebviewWindowBuilder::new(app, "platform", WebviewUrl::App("index.html?view=platform".into()))
         .title("Token Orb 平台信息")
-        .inner_size(370.0, 300.0)
+        .inner_size(410.0, 300.0)
         .resizable(false)
         .decorations(false)
         .transparent(false)
@@ -229,7 +193,40 @@ fn toggle_monitor<R: Runtime>(app: &AppHandle<R>, anchor: Option<PhysicalPositio
         .build();
 
     if let Ok(window) = window {
-        position_monitor(&window, anchor);
+        position_monitor(app, &window, tray_rect);
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+fn open_tray_menu<R: Runtime>(app: &AppHandle<R>, tray_rect: tauri::Rect) {
+    if let Some(window) = app.get_webview_window("tray-menu") {
+        position_tray_menu(app, &window, &tray_rect);
+        let _ = window.show();
+        let _ = window.set_focus();
+        return;
+    }
+
+    let window = WebviewWindowBuilder::new(app, "tray-menu", WebviewUrl::App("index.html?view=tray-menu".into()))
+        .title("Token Orb 菜单")
+        .inner_size(250.0, 238.0)
+        .resizable(false)
+        .decorations(false)
+        .transparent(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .shadow(true)
+        .visible(false)
+        .build();
+
+    if let Ok(window) = window {
+        let window_on_blur = window.clone();
+        window.on_window_event(move |event| {
+            if matches!(event, WindowEvent::Focused(false)) {
+                let _ = window_on_blur.hide();
+            }
+        });
+        position_tray_menu(app, &window, &tray_rect);
         let _ = window.show();
         let _ = window.set_focus();
     }
@@ -273,26 +270,94 @@ fn open_update_window<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
-fn position_monitor<R: Runtime>(window: &WebviewWindow<R>, anchor: Option<PhysicalPosition<i32>>) {
-    if let Some(anchor) = anchor {
-        let x = anchor.x - 185;
+fn position_monitor<R: Runtime>(app: &AppHandle<R>, window: &WebviewWindow<R>, tray_rect: Option<tauri::Rect>) {
+    let window_size = window.outer_size().unwrap_or(PhysicalSize::new(410, 300));
+
+    if let Some(rect) = tray_rect {
+        let anchor = tray_anchor(&rect);
+        let monitor = app
+            .monitor_from_point(anchor.x as f64, anchor.y as f64)
+            .ok()
+            .flatten();
+        let x = anchor.x - (window_size.width as i32 / 2);
         let y = anchor.y + 8;
-        let _ = window.set_position(PhysicalPosition::new(x.max(8), y.max(8)));
+        let position = monitor
+            .as_ref()
+            .map(|monitor| clamp_monitor_position(x, y, window_size, monitor.position(), monitor.size()))
+            .unwrap_or_else(|| PhysicalPosition::new(x.max(8), y.max(8)));
+        let _ = window.set_position(position);
         return;
     }
 
     if let Ok(Some(monitor)) = window.current_monitor() {
         let size = monitor.size();
         let position = monitor.position();
-        let x = position.x + size.width as i32 - 410;
+        let x = position.x + size.width as i32 - window_size.width as i32 - 8;
         let y = position.y + 32;
         let _ = window.set_position(PhysicalPosition::new(x, y));
     }
 }
 
-fn tray_anchor(rect: &tauri::Rect) -> Option<PhysicalPosition<i32>> {
-    match rect.position {
-        tauri::Position::Physical(position) => Some(PhysicalPosition::new(position.x, position.y)),
-        tauri::Position::Logical(position) => Some(PhysicalPosition::new(position.x as i32, position.y as i32)),
+fn position_tray_menu<R: Runtime>(app: &AppHandle<R>, window: &WebviewWindow<R>, tray_rect: &tauri::Rect) {
+    let window_size = window.outer_size().unwrap_or(PhysicalSize::new(250, 238));
+    let anchor = tray_anchor(tray_rect);
+    let x = anchor.x - (window_size.width as i32 / 2);
+    let y = anchor.y + 6;
+    let position = app
+        .monitor_from_point(anchor.x as f64, anchor.y as f64)
+        .ok()
+        .flatten()
+        .as_ref()
+        .map(|monitor| clamp_monitor_position(x, y, window_size, monitor.position(), monitor.size()))
+        .unwrap_or_else(|| PhysicalPosition::new(x.max(8), y.max(8)));
+    let _ = window.set_position(position);
+}
+
+fn tray_anchor(rect: &tauri::Rect) -> PhysicalPosition<i32> {
+    let position = rect.position.to_physical::<i32>(1.0);
+    let size = rect.size.to_physical::<u32>(1.0);
+    PhysicalPosition::new(position.x + (size.width as i32 / 2), position.y + size.height as i32)
+}
+
+fn clamp_monitor_position(
+    x: i32,
+    y: i32,
+    window_size: PhysicalSize<u32>,
+    monitor_position: &PhysicalPosition<i32>,
+    monitor_size: &PhysicalSize<u32>,
+) -> PhysicalPosition<i32> {
+    const SCREEN_MARGIN: i32 = 8;
+    let min_x = monitor_position.x + SCREEN_MARGIN;
+    let max_x = monitor_position.x + monitor_size.width as i32 - window_size.width as i32 - SCREEN_MARGIN;
+    let min_y = monitor_position.y + SCREEN_MARGIN;
+    let max_y = monitor_position.y + monitor_size.height as i32 - window_size.height as i32 - SCREEN_MARGIN;
+    PhysicalPosition::new(x.clamp(min_x, max_x.max(min_x)), y.clamp(min_y, max_y.max(min_y)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tray_anchor_uses_the_icon_center_and_bottom_edge() {
+        let rect = tauri::Rect {
+            position: tauri::Position::Physical(PhysicalPosition::new(1200, 0)),
+            size: tauri::Size::Physical(PhysicalSize::new(24, 24)),
+        };
+
+        assert_eq!(tray_anchor(&rect), PhysicalPosition::new(1212, 24));
+    }
+
+    #[test]
+    fn monitor_position_stays_within_the_clicked_monitor() {
+        let position = clamp_monitor_position(
+            1200,
+            850,
+            PhysicalSize::new(410, 300),
+            &PhysicalPosition::new(0, 0),
+            &PhysicalSize::new(1440, 900),
+        );
+
+        assert_eq!(position, PhysicalPosition::new(1022, 592));
     }
 }

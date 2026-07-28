@@ -1,5 +1,27 @@
 <template>
-  <main v-if="isSettingsView" class="settings-shell">
+  <main v-if="isTrayMenuView" class="tray-menu-shell">
+    <button class="tray-menu-item" type="button" @click="runTrayCommand('monitor')">
+      <ListChecks :size="18" />
+      <span>显示监控面板</span>
+    </button>
+    <button class="tray-menu-item" type="button" @click="runTrayCommand('settings')">
+      <Settings :size="18" />
+      <span>设置</span>
+    </button>
+    <button class="tray-menu-item" type="button" @click="runTrayCommand('update')">
+      <RefreshCw :size="18" />
+      <span>{{ platformUpdateAvailable ? '有版本更新' : '检查更新' }}</span>
+      <i v-if="platformUpdateAvailable" class="tray-menu-update-dot"></i>
+    </button>
+    <div class="tray-menu-version">当前版本 v{{ appVersion }}</div>
+    <div class="tray-menu-separator"></div>
+    <button class="tray-menu-item tray-menu-item--quit" type="button" @click="runTrayCommand('quit')">
+      <Power :size="18" />
+      <span>退出 Token Orb</span>
+    </button>
+  </main>
+
+  <main v-else-if="isSettingsView" class="settings-shell">
     <section class="settings-panel standalone">
       <div class="section-title">
         <MonitorDot :size="18" />
@@ -543,7 +565,9 @@ import {
   MonitorDot,
   Network,
   PanelRightClose,
+  Power,
   RefreshCw,
+  Settings,
   Users,
   X
 } from 'lucide-vue-next'
@@ -618,6 +642,7 @@ const view = new URLSearchParams(window.location.search).get('view') ?? 'persona
 const isSettingsView = view === 'settings'
 const isPlatformView = view === 'platform'
 const isUpdaterView = view === 'updater'
+const isTrayMenuView = view === 'tray-menu'
 const loading = ref(false)
 const errorMessage = ref('')
 const saveMessage = ref('')
@@ -1110,13 +1135,11 @@ async function checkForAppUpdate() {
     const { check } = await import('@tauri-apps/plugin-updater')
     const update = await check()
     if (!update) {
-      await syncTrayUpdateStatus(false)
       updateState.value = 'latest'
       updateMessage.value = '当前已经是最新版本。'
       return
     }
 
-    await syncTrayUpdateStatus(true)
     availableUpdate = update
     updateVersion.value = update.version
     updateBody.value = update.body || '暂无更新说明。'
@@ -1129,12 +1152,21 @@ async function checkForAppUpdate() {
 }
 
 async function checkPlatformUpdate() {
-  if (!isPlatformView || !('__TAURI_INTERNALS__' in window)) return
+  if ((!isPlatformView && !isTrayMenuView) || !('__TAURI_INTERNALS__' in window)) return
   try {
     const { check } = await import('@tauri-apps/plugin-updater')
     platformUpdateAvailable.value = (await check()) !== null
   } catch {
     platformUpdateAvailable.value = false
+  }
+}
+
+async function runTrayCommand(command: 'monitor' | 'settings' | 'update' | 'quit') {
+  try {
+    const { invoke } = await import('@tauri-apps/api/core')
+    await invoke('tray_command', { command })
+  } catch {
+    // 菜单命令失败时保留窗口，方便用户重试。
   }
 }
 
@@ -1184,16 +1216,6 @@ async function openReleaseNotes() {
     await openUrl(releaseUrl)
   } catch {
     window.open(releaseUrl, '_blank', 'noopener,noreferrer')
-  }
-}
-
-async function syncTrayUpdateStatus(available: boolean) {
-  if (!('__TAURI_INTERNALS__' in window)) return
-  try {
-    const { emit } = await import('@tauri-apps/api/event')
-    await emit('token-orb-update-status', { available })
-  } catch {
-    // 托盘菜单状态同步失败不影响更新窗口本身。
   }
 }
 
@@ -1553,6 +1575,11 @@ function formatPoolResetItem(item: PoolResetItem) {
 
 onMounted(() => {
   window.addEventListener('storage', syncExternalSettingsChange)
+  if (isTrayMenuView) {
+    void initAppVersion()
+    void checkPlatformUpdate()
+    return
+  }
   if (isUpdaterView) {
     void initUpdaterView()
     return

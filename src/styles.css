@@ -25,13 +25,76 @@ body:has(.settings-shell) {
 }
 
 body:has(.platform-shell),
-body:has(.personal-shell) {
+body:has(.personal-shell),
+body:has(.tray-menu-shell) {
   background: #0f172a;
 }
 
 button,
 input {
   font: inherit;
+}
+
+.tray-menu-shell {
+  width: 250px;
+  height: 238px;
+  padding: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(203, 213, 225, 0.28);
+  border-radius: 8px;
+  background: #252a31;
+  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.42);
+  color: #f8fafc;
+}
+
+.tray-menu-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 42px;
+  gap: 10px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: default;
+}
+
+.tray-menu-item:hover,
+.tray-menu-item:focus-visible {
+  outline: none;
+  background: #0a84ff;
+}
+
+.tray-menu-item--quit:hover,
+.tray-menu-item--quit:focus-visible {
+  background: #d84444;
+}
+
+.tray-menu-version {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  padding-left: 40px;
+  color: #9ca3af;
+  font-size: 13px;
+}
+
+.tray-menu-separator {
+  height: 1px;
+  margin: 6px 10px;
+  background: rgba(203, 213, 225, 0.22);
+}
+
+.tray-menu-update-dot {
+  width: 7px;
+  height: 7px;
+  margin-left: auto;
+  border-radius: 50%;
+  background: #f59e0b;
 }
 
 .settings-shell {

@@ -4,7 +4,7 @@ import App from './App.vue'
 import { settingsStorageKey, type AppSettings } from '@/domain/settings'
 import { fetchAdminModelUsageRanking, fetchAdminModelUserUsage, fetchAdminMonitorMetrics, fetchAdminUserModelUsage, fetchSub2apiMetrics } from '@/domain/sub2apiClient'
 
-const { checkForAvailableUpdate, emitTauriEvent, getSettingsUpdatedListener, getAppVersion, hidePersonalFloatingOrb, listenTauriEvent, openReleaseNotes, resetSettingsUpdatedListener, tauriWindow } = vi.hoisted(() => {
+const { checkForAvailableUpdate, emitTauriEvent, getSettingsUpdatedListener, getAppVersion, hidePersonalFloatingOrb, invokeTauriCommand, listenTauriEvent, openReleaseNotes, resetSettingsUpdatedListener, tauriWindow } = vi.hoisted(() => {
   let settingsUpdatedListener: (() => void) | undefined
   const checkForAvailableUpdate = vi.fn<() => Promise<{ body: string; version: string } | null>>(async () => ({
     body: '修复平台更新提示',
@@ -14,6 +14,7 @@ const { checkForAvailableUpdate, emitTauriEvent, getSettingsUpdatedListener, get
   const getAppVersion = vi.fn(async () => '0.4.3')
   const openReleaseNotes = vi.fn(async () => undefined)
   const emitTauriEvent = vi.fn(async () => undefined)
+  const invokeTauriCommand = vi.fn(async () => undefined)
   const listenTauriEvent = vi.fn(async (eventName: string, listener: () => void) => {
     if (eventName === 'token-orb-settings-updated') {
       settingsUpdatedListener = listener
@@ -37,6 +38,7 @@ const { checkForAvailableUpdate, emitTauriEvent, getSettingsUpdatedListener, get
     getSettingsUpdatedListener: () => settingsUpdatedListener,
     getAppVersion,
     hidePersonalFloatingOrb,
+    invokeTauriCommand,
     listenTauriEvent,
     openReleaseNotes,
     resetSettingsUpdatedListener: () => {
@@ -110,6 +112,10 @@ vi.mock('@tauri-apps/api/app', () => ({
 vi.mock('@tauri-apps/api/event', () => ({
   emit: emitTauriEvent,
   listen: listenTauriEvent
+}))
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: invokeTauriCommand
 }))
 
 vi.mock('@tauri-apps/plugin-updater', () => ({
@@ -305,6 +311,25 @@ describe('App settings sync', () => {
     const button = wrapper.get('.monitor-panel > .section-title .platform-version--available')
     expect(button.text()).toContain('v0.4.3')
     expect(button.find('.platform-version__update-dot').exists()).toBe(true)
+  })
+
+  it('renders tray commands separately and sends monitor clicks to Rust', async () => {
+    window.history.replaceState({}, '', '/?view=tray-menu')
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { configurable: true, value: {} })
+    const wrapper = mount(App)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('显示监控面板')
+    expect(wrapper.text()).toContain('设置')
+    expect(wrapper.text()).toContain('有版本更新')
+    expect(wrapper.text()).toContain('当前版本 v0.4.3')
+    expect(wrapper.text()).toContain('退出 Token Orb')
+
+    await wrapper.get('.tray-menu-item').trigger('click')
+    await flushPromises()
+
+    expect(invokeTauriCommand).toHaveBeenCalledWith('tray_command', { command: 'monitor' })
+    expect(fetchAdminMonitorMetrics).not.toHaveBeenCalled()
   })
 
   it('shows the current version in the normal color when no update is available', async () => {
