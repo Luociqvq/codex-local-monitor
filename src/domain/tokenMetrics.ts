@@ -63,8 +63,8 @@ export interface PoolAccountDetailItem {
   scheduleText: string
   capacityText: string
   capacityUsed: number | null
-  todayRequests: number | null
   todayTokens: number | null
+  sevenDayCost: number | null
   usageWindows: PoolAccountUsageWindow[]
 }
 
@@ -77,7 +77,6 @@ export interface PoolAccountUsageWindow {
 }
 
 export interface PoolAccountTodayStats {
-  requests: number | null
   tokens: number | null
 }
 
@@ -427,7 +426,8 @@ export function listPoolAccountDetails(
   accounts: unknown[],
   groupId: PoolGroupIdSelector = null,
   now = new Date(),
-  todayStatsByAccountId: Record<string, PoolAccountTodayStats> = {}
+  todayStatsByAccountId: Record<string, PoolAccountTodayStats> = {},
+  sevenDayCostByAccountId: Record<string, number | null> = {}
 ): PoolAccountDetailItem[] {
   const wantedGroupIds = normalizeGroupIds(groupId)
   return accounts
@@ -436,7 +436,8 @@ export function listPoolAccountDetails(
       if (!isRecord(item)) return null
       const extra = isRecord(item.extra) ? item.extra : null
       const status = getAccountDetailStatus(item, now)
-      const todayStats = todayStatsByAccountId[readAccountIdString(item)] ?? null
+      const accountId = readAccountIdString(item)
+      const todayStats = todayStatsByAccountId[accountId] ?? null
       return {
         rank: 0,
         name: formatAccountDetailName(item),
@@ -446,8 +447,8 @@ export function listPoolAccountDetails(
         scheduleText: item.schedulable === false ? '已关闭' : '调度中',
         capacityText: formatAccountCapacity(item),
         capacityUsed: readAccountCapacityUsed(item),
-        todayRequests: readAccountTodayRequests(item, extra, todayStats),
         todayTokens: readAccountTodayTokens(item, extra, todayStats),
+        sevenDayCost: sevenDayCostByAccountId[accountId] ?? null,
         usageWindows: listAccountUsageWindows(extra, now)
       }
     })
@@ -469,6 +470,11 @@ export function formatCost(value: number | null): string {
   if (value >= 1) return `$${value.toFixed(2)}`
   if (value >= 0.01) return `$${value.toFixed(3)}`
   return `$${value.toFixed(4)}`
+}
+
+export function formatFixedCost(value: number | null): string {
+  if (value === null || Number.isNaN(value)) return '--'
+  return `$${value.toFixed(2)}`
 }
 
 export function formatFirstToken(valueMs: number | null): string {
@@ -667,16 +673,6 @@ function readAccountTodayTokens(
   return todayStats?.tokens
     ?? readFirstNumber(item, ['today_tokens', 'todayTokens', 'tokens', 'total_tokens', 'daily_tokens'])
     ?? readFirstNumber(extra, ['today_tokens', 'todayTokens', 'tokens', 'total_tokens', 'daily_tokens'])
-}
-
-function readAccountTodayRequests(
-  item: Record<string, unknown>,
-  extra: Record<string, unknown> | null,
-  todayStats: PoolAccountTodayStats | null
-): number | null {
-  return todayStats?.requests
-    ?? readFirstNumber(item, ['today_requests', 'todayRequests', 'requests', 'request_count', 'daily_requests'])
-    ?? readFirstNumber(extra, ['today_requests', 'todayRequests', 'requests', 'request_count', 'daily_requests'])
 }
 
 function readAccountIdString(item: Record<string, unknown>): string {

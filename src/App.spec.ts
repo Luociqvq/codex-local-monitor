@@ -229,7 +229,7 @@ describe('App settings sync', () => {
       poolAccounts: { active: 1, limited: 0, error: 0, total: 1 },
       poolCapacity: null,
       poolAccountDetails: [
-        { rank: 1, name: '正常账号', status: 'normal', statusText: '正常', schedulable: true, scheduleText: '调度中', capacityText: '0 / 10', capacityUsed: 0, todayRequests: 1, todayTokens: 1, usageWindows: [] }
+        { rank: 1, name: '正常账号', status: 'normal', statusText: '正常', schedulable: true, scheduleText: '调度中', capacityText: '0 / 10', capacityUsed: 0, todayTokens: 1, sevenDayCost: null, usageWindows: [] }
       ],
       userRanking: [],
       updatedAt: '2026-03-16T09:00:00.000Z'
@@ -494,8 +494,8 @@ describe('App settings sync', () => {
           scheduleText: '调度中',
           capacityText: '0 / 10',
           capacityUsed: 0,
-          todayRequests: 159,
           todayTokens: 52220000,
+          sevenDayCost: 5.406,
           usageWindows: [
             { type: '5h', usedPercent: 9, resetAt: '2026-03-16T12:37:00.000Z' },
             { type: '7d', usedPercent: 7, resetAt: '2026-03-23T09:00:00.000Z' }
@@ -540,7 +540,8 @@ describe('App settings sync', () => {
     expect(wrapper.get('.schedule-pill').text()).toBe('调度中')
     expect(wrapper.get('.account-status-pill.normal').text()).toBe('正常')
     expect(wrapper.text()).toContain('0 / 10')
-    expect(wrapper.text()).toContain('请求 159')
+    expect(wrapper.text()).toContain('金额 $5.41')
+    expect(wrapper.text()).not.toContain('请求 159')
     expect(wrapper.text()).toContain('Token 52.2M')
     expect(wrapper.text()).toContain('5h使用量 9% · 3h 37m')
     expect(wrapper.text()).toContain('7d使用量 7% · 7d')
@@ -590,8 +591,8 @@ describe('App settings sync', () => {
         scheduleText: '调度中',
         capacityText: '0 / 10',
         capacityUsed: 0,
-        todayRequests: 0,
         todayTokens: 0,
+        sevenDayCost: null,
         usageWindows: [{ type: '5h' as const, usedPercent, resetAt: null }]
       })),
       userRanking: [],
@@ -628,10 +629,10 @@ describe('App settings sync', () => {
       poolAccounts: { active: 1, limited: 1, error: 1, total: 4 },
       poolCapacity: null,
       poolAccountDetails: [
-        { rank: 1, name: '正常账号', status: 'normal', statusText: '正常', schedulable: true, scheduleText: '调度中', capacityText: '0 / 10', capacityUsed: 0, todayRequests: 1, todayTokens: 1, usageWindows: [] },
-        { rank: 2, name: '限流账号', status: 'limited', statusText: '限流中', schedulable: false, scheduleText: '已关闭', capacityText: '1 / 10', capacityUsed: 1, todayRequests: 2, todayTokens: 2, usageWindows: [] },
-        { rank: 3, name: '错误账号', status: 'error', statusText: '错误', schedulable: false, scheduleText: '已关闭', capacityText: '2 / 10', capacityUsed: 2, todayRequests: 3, todayTokens: 3, usageWindows: [] },
-        { rank: 4, name: '停用账号', status: 'disabled', statusText: '停用', schedulable: false, scheduleText: '已关闭', capacityText: '0 / 10', capacityUsed: 0, todayRequests: 4, todayTokens: 4, usageWindows: [] }
+        { rank: 1, name: '正常账号', status: 'normal', statusText: '正常', schedulable: true, scheduleText: '调度中', capacityText: '0 / 10', capacityUsed: 0, todayTokens: 1, sevenDayCost: 1, usageWindows: [] },
+        { rank: 2, name: '限流账号', status: 'limited', statusText: '限流中', schedulable: false, scheduleText: '已关闭', capacityText: '1 / 10', capacityUsed: 1, todayTokens: 2, sevenDayCost: 2, usageWindows: [] },
+        { rank: 3, name: '错误账号', status: 'error', statusText: '错误', schedulable: false, scheduleText: '已关闭', capacityText: '2 / 10', capacityUsed: 2, todayTokens: 3, sevenDayCost: 3, usageWindows: [] },
+        { rank: 4, name: '停用账号', status: 'disabled', statusText: '停用', schedulable: false, scheduleText: '已关闭', capacityText: '0 / 10', capacityUsed: 0, todayTokens: 4, sevenDayCost: 4, usageWindows: [] }
       ],
       userRanking: [],
       updatedAt: '2026-03-16T09:00:00.000Z'
@@ -669,8 +670,8 @@ describe('App settings sync', () => {
       poolAccounts: { active: 1, limited: 1, error: 0, total: 2 },
       poolCapacity: null,
       poolAccountDetails: [
-        { rank: 1, name: '正常账号', status: 'normal', statusText: '正常', schedulable: true, scheduleText: '调度中', capacityText: '0 / 10', capacityUsed: 0, todayRequests: 1, todayTokens: 1, usageWindows: [] },
-        { rank: 2, name: '限流账号', status: 'limited', statusText: '限流中', schedulable: false, scheduleText: '已关闭', capacityText: '1 / 10', capacityUsed: 1, todayRequests: 2, todayTokens: 2, usageWindows: [] }
+        { rank: 1, name: '正常账号', status: 'normal', statusText: '正常', schedulable: true, scheduleText: '调度中', capacityText: '0 / 10', capacityUsed: 0, todayTokens: 1, sevenDayCost: 1, usageWindows: [] },
+        { rank: 2, name: '限流账号', status: 'limited', statusText: '限流中', schedulable: false, scheduleText: '已关闭', capacityText: '1 / 10', capacityUsed: 1, todayTokens: 2, sevenDayCost: 2, usageWindows: [] }
       ],
       userRanking: [],
       updatedAt: '2026-03-16T09:00:00.000Z'
@@ -704,8 +705,8 @@ describe('App settings sync', () => {
           scheduleText: '调度中',
           capacityText: '0 / 10',
           capacityUsed: 0,
-          todayRequests: 159,
           todayTokens: 52220000,
+          sevenDayCost: 5.4,
           usageWindows: []
         },
         {
@@ -717,8 +718,8 @@ describe('App settings sync', () => {
           scheduleText: '已关闭',
           capacityText: '0 / 10',
           capacityUsed: 0,
-          todayRequests: 0,
           todayTokens: 0,
+          sevenDayCost: 0,
           usageWindows: []
         },
         {
@@ -730,8 +731,8 @@ describe('App settings sync', () => {
           scheduleText: '已关闭',
           capacityText: '0 / 10',
           capacityUsed: 0,
-          todayRequests: 0,
           todayTokens: 0,
+          sevenDayCost: 0,
           usageWindows: []
         }
       ],

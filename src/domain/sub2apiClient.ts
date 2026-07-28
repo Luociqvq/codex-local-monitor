@@ -101,9 +101,12 @@ export async function fetchAdminMonitorMetrics(config: AdminMonitorConfig): Prom
   const accountItems = groupMatched ? dedupeAccounts(accountsPayloads.flatMap((payload) => readItems(payload))) : []
   const selectedGroupIds = poolGroupIds.length > 0 ? poolGroupIds : null
   const now = new Date()
-  const todayStatsByAccountId = groupMatched
-    ? await fetchAccountTodayStats(baseUrl, headers, accountItems, refreshAt)
-    : {}
+  const [todayStatsByAccountId, sevenDayCostByAccountId] = groupMatched
+    ? await Promise.all([
+        fetchAccountTodayStats(baseUrl, headers, accountItems, refreshAt),
+        fetchAccountSevenDayCosts(baseUrl, headers, accountItems, refreshAt)
+      ])
+    : [{}, {}]
   const userIdentities = parseUsers(usersPayload)
 
   return {
@@ -123,7 +126,9 @@ export async function fetchAdminMonitorMetrics(config: AdminMonitorConfig): Prom
     poolSevenDayResetItems: groupMatched ? listPoolResetItems(accountItems, selectedGroupIds, now, '7d') : [],
     poolAccounts: groupMatched ? countPoolAccounts(accountItems, selectedGroupIds) : null,
     poolCapacity: groupMatched ? findPoolCapacitySummary(capacityPayload, selectedGroupIds) : null,
-    poolAccountDetails: groupMatched ? listPoolAccountDetails(accountItems, selectedGroupIds, now, todayStatsByAccountId) : [],
+    poolAccountDetails: groupMatched
+      ? listPoolAccountDetails(accountItems, selectedGroupIds, now, todayStatsByAccountId, sevenDayCostByAccountId)
+      : [],
     userRanking: parseUserRanking(rankingPayload, userIdentities),
     userIdentities,
     updatedAt: new Date().toISOString()
@@ -233,6 +238,57 @@ function listAccountIds(accounts: unknown[]): number[] {
   return ids
 }
 
+async function fetchAccountSevenDayCosts(
+  baseUrl: string,
+  headers: Record<string, string>,
+  accounts: unknown[],
+  refreshAt: number
+): Promise<Record<string, number | null>> {
+  const accountIds = listAccountIds(accounts.filter(hasSevenDayUsageWindow))
+  const costs: Record<string, number | null> = {}
+
+  for (let index = 0; index < accountIds.length; index += 4) {
+    const batch = accountIds.slice(index, index + 4)
+    await Promise.all(batch.map(async (accountId) => {
+      try {
+        const payload = await requestJson(
+          buildRealtimeUrl(`${baseUrl}/api/v1/admin/accounts/${accountId}/usage?source=active`, refreshAt),
+          headers
+        )
+        costs[String(accountId)] = parseSevenDayWindowCost(payload)
+      } catch {
+        costs[String(accountId)] = null
+      }
+    }))
+  }
+
+  return costs
+}
+
+function hasSevenDayUsageWindow(account: unknown): boolean {
+  if (typeof account !== 'object' || account === null || Array.isArray(account)) return false
+  const extra = (account as Record<string, unknown>).extra
+  if (typeof extra !== 'object' || extra === null || Array.isArray(extra)) return false
+  const record = extra as Record<string, unknown>
+  return ['codex_7d_used_percent', 'codex_7d_reset_at', 'codex_7d_reset_after_seconds']
+    .some((key) => record[key] !== undefined && record[key] !== null)
+}
+
+function parseSevenDayWindowCost(payload: unknown): number | null {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return null
+  const root = payload as Record<string, unknown>
+  const data = typeof root.data === 'object' && root.data !== null && !Array.isArray(root.data)
+    ? root.data as Record<string, unknown>
+    : root
+  const sevenDay = typeof data.seven_day === 'object' && data.seven_day !== null && !Array.isArray(data.seven_day)
+    ? data.seven_day as Record<string, unknown>
+    : null
+  const windowStats = sevenDay && typeof sevenDay.window_stats === 'object' && sevenDay.window_stats !== null && !Array.isArray(sevenDay.window_stats)
+    ? sevenDay.window_stats as Record<string, unknown>
+    : null
+  return readFiniteNumber(windowStats?.cost)
+}
+
 function parseAccountTodayStats(payload: unknown): Record<string, PoolAccountTodayStats> {
   if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return {}
   const record = payload as Record<string, unknown>
@@ -245,11 +301,10 @@ function parseAccountTodayStats(payload: unknown): Record<string, PoolAccountTod
 
   return Object.fromEntries(Object.entries(stats).map(([accountId, value]) => {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-      return [accountId, { requests: null, tokens: null }]
+      return [accountId, { tokens: null }]
     }
     const item = value as Record<string, unknown>
     return [accountId, {
-      requests: readFiniteNumber(item.requests),
       tokens: readFiniteNumber(item.tokens)
     }]
   }))

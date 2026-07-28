@@ -8,6 +8,7 @@ import {
   findLatestPoolResetAt,
   findPoolCapacitySummary,
   formatCost,
+  formatFixedCost,
   formatFirstToken,
   formatPoolCapacity,
   formatPoolAccountCount,
@@ -181,8 +182,8 @@ describe('tokenMetrics', () => {
         scheduleText: '调度中',
         capacityText: '0 / 10',
         capacityUsed: 0,
-        todayRequests: 159,
         todayTokens: 52220000,
+        sevenDayCost: null,
         usageWindows: [
           { type: '5h', usedPercent: 9, resetAt: '2026-03-16T12:37:00.000Z' },
           { type: '7d', usedPercent: 7, resetAt: '2026-03-23T09:00:00.000Z' }
@@ -197,8 +198,8 @@ describe('tokenMetrics', () => {
         scheduleText: '调度中',
         capacityText: '--',
         capacityUsed: null,
-        todayRequests: 158,
         todayTokens: 22560000,
+        sevenDayCost: null,
         usageWindows: [
           { type: '5h', usedPercent: 51, resetAt: '2026-03-20T08:00:00.000Z' },
           { type: '7d', usedPercent: 50, resetAt: '2026-03-23T08:00:00.000Z' }
@@ -213,14 +214,14 @@ describe('tokenMetrics', () => {
         scheduleText: '已关闭',
         capacityText: '--',
         capacityUsed: null,
-        todayRequests: null,
         todayTokens: null,
+        sevenDayCost: null,
         usageWindows: []
       }
     ])
   })
 
-  it('uses batch today stats by account id for account detail requests and tokens', () => {
+  it('uses batch today tokens and 7d window cost by account id for account details', () => {
     const accounts = [
       {
         id: 11,
@@ -236,14 +237,16 @@ describe('tokenMetrics', () => {
     ]
 
     expect(listPoolAccountDetails(accounts, 2, new Date('2026-03-16T09:00:00Z'), {
-      '11': { requests: 159, tokens: 18090000 }
+      '11': { tokens: 18090000 }
+    }, {
+      '11': 5.4
     })).toEqual([
       expect.objectContaining({
         name: 'CR39-UQY5-9C6N-402',
         capacityText: '3 / 10',
         capacityUsed: 3,
-        todayRequests: 159,
-        todayTokens: 18090000
+        todayTokens: 18090000,
+        sevenDayCost: 5.4
       })
     ])
   })
@@ -289,6 +292,10 @@ describe('tokenMetrics', () => {
     expect(formatCost(0.1284)).toBe('$0.128')
     expect(formatCost(0.0098)).toBe('$0.0098')
     expect(formatCost(null)).toBe('--')
+    expect(formatFixedCost(5.406)).toBe('$5.41')
+    expect(formatFixedCost(0.009)).toBe('$0.01')
+    expect(formatFixedCost(0)).toBe('$0.00')
+    expect(formatFixedCost(null)).toBe('--')
     expect(formatPoolCapacity({ groupId: 2, concurrencyUsed: 3, concurrencyMax: 40 })).toBe('3 / 40')
     expect(formatPoolCapacity(null)).toBe('--')
     expect(formatPoolAccountCount({ active: 2, limited: 1, error: 0, total: 4 })).toEqual({
@@ -352,9 +359,14 @@ describe('tokenMetrics', () => {
       requests.push({ url: urlText, init })
       const pathname = new URL(urlText).pathname
       const payload = pathname.endsWith('/api/v1/admin/accounts')
-        ? { data: [{ id: 11, name: 'CR39-UQY5-9C6N-402', group_id: 2, status: 'active' }] }
+        ? { data: [
+            { id: 11, name: 'CR39-UQY5-9C6N-402', group_id: 2, status: 'active', extra: { codex_7d_used_percent: 7 } },
+            { id: 12, name: '没有 7d 窗口', group_id: 2, status: 'active', extra: {} }
+          ] }
         : pathname.endsWith('/api/v1/admin/accounts/today-stats/batch')
           ? { data: { stats: { '11': { requests: 159, tokens: 18090000, cost: 13.08, user_cost: 13.08 } } } }
+          : pathname.endsWith('/api/v1/admin/accounts/11/usage')
+            ? { data: { seven_day: { window_stats: { requests: 88, tokens: 8100000, cost: 5.4, user_cost: 5.4 } } } }
           : { data: [] }
       return new Response(JSON.stringify(payload), {
         status: 200,
@@ -369,11 +381,14 @@ describe('tokenMetrics', () => {
 
     const batchRequest = requests.find((item) => item.url.includes('/api/v1/admin/accounts/today-stats/batch'))
     expect(batchRequest?.init?.method).toBe('POST')
-    expect(batchRequest?.init?.body).toBe(JSON.stringify({ account_ids: [11] }))
+    expect(batchRequest?.init?.body).toBe(JSON.stringify({ account_ids: [11, 12] }))
     expect(metrics.poolAccountDetails[0]).toEqual(expect.objectContaining({
-      todayRequests: 159,
-      todayTokens: 18090000
+      todayTokens: 18090000,
+      sevenDayCost: 5.4
     }))
+    const usageRequest = requests.find((item) => item.url.includes('/api/v1/admin/accounts/11/usage'))
+    expect(usageRequest?.url).toContain('source=active')
+    expect(requests.some((item) => item.url.includes('/api/v1/admin/accounts/12/usage'))).toBe(false)
   })
 
   it('surfaces personal token auth errors from sub2api responses', async () => {

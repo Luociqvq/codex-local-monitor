@@ -470,7 +470,7 @@
             </div>
             <div class="account-detail-card__meta">
               <span class="account-today-stats">
-                <span>请求 <strong>{{ formatRequestCount(item.todayRequests) }}</strong></span>
+                <span>金额 <strong>{{ formatFixedCost(item.sevenDayCost) }}</strong></span>
                 <span>Token <strong>{{ formatCompactTokenCount(item.todayTokens) }}</strong></span>
               </span>
               <span class="account-schedule-stack">
@@ -574,6 +574,7 @@ import {
 import { fetchAdminModelUsageRanking, fetchAdminModelUserUsage, fetchAdminMonitorMetrics, fetchAdminUserModelUsage, fetchSub2apiMetrics } from '@/domain/sub2apiClient'
 import {
   formatCost,
+  formatFixedCost,
   formatFirstToken,
   formatPoolAccountCount,
   formatPoolCapacity,
