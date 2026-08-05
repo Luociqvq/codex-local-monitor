@@ -380,7 +380,7 @@ describe('App settings sync', () => {
     await wrapper.get('.update-refresh-button').trigger('click')
     await flushPromises()
 
-    expect(tauriWindow.setSize).toHaveBeenLastCalledWith(expect.objectContaining({ width: 420, height: 502 }))
+    expect(tauriWindow.setSize).toHaveBeenLastCalledWith(expect.objectContaining({ width: 420, height: 522 }))
   })
 
   it('tests personal JWT independently from admin API settings', async () => {
@@ -487,6 +487,7 @@ describe('App settings sync', () => {
       poolAccountDetails: [
         {
           rank: 1,
+          priority: 1,
           name: '由磊（707200583@163.com）',
           status: 'normal',
           statusText: '正常',
@@ -537,6 +538,8 @@ describe('App settings sync', () => {
     expect(wrapper.get('.monitor-grid--secondary').text()).toContain('平均响应16.54s')
     expect(wrapper.get('.monitor-grid--secondary').text()).toContain('7 活跃用户')
     expect(wrapper.get('.ranking-value .token-cost').text()).toBe('$13.08')
+    expect(wrapper.get('.account-detail-card__identity b').text()).toBe('#1')
+    expect(wrapper.find('.account-priority-pill').exists()).toBe(false)
     expect(wrapper.get('.schedule-pill').text()).toBe('调度中')
     expect(wrapper.get('.account-status-pill.normal').text()).toBe('正常')
     expect(wrapper.text()).toContain('0 / 10')

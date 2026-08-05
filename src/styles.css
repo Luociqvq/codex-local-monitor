@@ -1158,7 +1158,7 @@ button.ranking-row {
   font-weight: 900;
 }
 
-.account-detail-card__identity span {
+.account-detail-card__name {
   min-width: 0;
   overflow: hidden;
   color: #f8fafc;

@@ -175,6 +175,7 @@ describe('tokenMetrics', () => {
     expect(listPoolAccountDetails(accounts, [2, 5], new Date('2026-03-16T09:00:00Z'))).toEqual([
       {
         rank: 1,
+        priority: null,
         name: '由磊（707200583@163.com）',
         status: 'normal',
         statusText: '正常',
@@ -191,6 +192,7 @@ describe('tokenMetrics', () => {
       },
       {
         rank: 2,
+        priority: null,
         name: 'punks.salver_6h+g4@icloud.com',
         status: 'limited',
         statusText: '限流中',
@@ -207,6 +209,7 @@ describe('tokenMetrics', () => {
       },
       {
         rank: 3,
+        priority: null,
         name: 'globs-artless.1n+g3@icloud.com',
         status: 'error',
         statusText: '错误',
@@ -218,6 +221,22 @@ describe('tokenMetrics', () => {
         sevenDayCost: null,
         usageWindows: []
       }
+    ])
+  })
+
+  it('sorts accounts by priority and then current capacity usage', () => {
+    const accounts = [
+      { id: 1, name: '同优先级低占用', group_id: 2, status: 'active', priority: 2, current_concurrency: 1 },
+      { id: 2, name: '低优先级', group_id: 2, status: 'active', priority: 3, current_concurrency: 9 },
+      { id: 3, name: '同优先级高占用', group_id: 2, status: 'active', priority: 2, current_concurrency: 4 },
+      { id: 4, name: '未设置优先级', group_id: 2, status: 'active', current_concurrency: 10 }
+    ]
+
+    expect(listPoolAccountDetails(accounts, 2)).toMatchObject([
+      { rank: 1, name: '同优先级高占用', priority: 2, capacityUsed: 4 },
+      { rank: 2, name: '同优先级低占用', priority: 2, capacityUsed: 1 },
+      { rank: 3, name: '低优先级', priority: 3, capacityUsed: 9 },
+      { rank: 4, name: '未设置优先级', priority: null, capacityUsed: 10 }
     ])
   })
 

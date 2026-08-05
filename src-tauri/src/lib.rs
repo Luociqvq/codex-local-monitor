@@ -258,7 +258,7 @@ fn open_update_window<R: Runtime>(app: &AppHandle<R>) {
 
     let window = WebviewWindowBuilder::new(app, "updater", WebviewUrl::App("index.html?view=updater".into()))
         .title("Token Orb 更新")
-        .inner_size(420.0, 360.0)
+        .inner_size(420.0, 380.0)
         .resizable(false)
         .decorations(true)
         .always_on_top(true)

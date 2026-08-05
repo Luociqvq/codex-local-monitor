@@ -56,6 +56,7 @@ export type PoolAccountDetailStatus = 'normal' | 'limited' | 'error' | 'disabled
 
 export interface PoolAccountDetailItem {
   rank: number
+  priority?: number | null
   name: string
   status: PoolAccountDetailStatus
   statusText: string
@@ -66,6 +67,11 @@ export interface PoolAccountDetailItem {
   todayTokens: number | null
   sevenDayCost: number | null
   usageWindows: PoolAccountUsageWindow[]
+}
+
+interface PoolAccountDetailSortItem extends PoolAccountDetailItem {
+  sourceIndex: number
+  priority: number | null
 }
 
 export type PoolAccountUsageWindowType = '5h' | '7d'
@@ -432,14 +438,16 @@ export function listPoolAccountDetails(
   const wantedGroupIds = normalizeGroupIds(groupId)
   return accounts
     .filter((item) => accountMatchesGroupId(item, wantedGroupIds))
-    .map((item) => {
+    .map((item, sourceIndex): PoolAccountDetailSortItem | null => {
       if (!isRecord(item)) return null
       const extra = isRecord(item.extra) ? item.extra : null
       const status = getAccountDetailStatus(item, now)
       const accountId = readAccountIdString(item)
       const todayStats = todayStatsByAccountId[accountId] ?? null
       return {
+        sourceIndex,
         rank: 0,
+        priority: readNumber(item, 'priority'),
         name: formatAccountDetailName(item),
         status,
         statusText: formatAccountStatusText(status),
@@ -452,8 +460,19 @@ export function listPoolAccountDetails(
         usageWindows: listAccountUsageWindows(extra, now)
       }
     })
-    .filter((item): item is Omit<PoolAccountDetailItem, 'rank'> & { rank: number } => item !== null)
-    .map((item, index) => ({ ...item, rank: index + 1 }))
+    .filter((item): item is PoolAccountDetailSortItem => item !== null)
+    .sort((a, b) => {
+      const leftPriority = a.priority ?? Number.POSITIVE_INFINITY
+      const rightPriority = b.priority ?? Number.POSITIVE_INFINITY
+      if (leftPriority !== rightPriority) return leftPriority - rightPriority
+
+      const leftCapacity = a.capacityUsed ?? Number.NEGATIVE_INFINITY
+      const rightCapacity = b.capacityUsed ?? Number.NEGATIVE_INFINITY
+      if (leftCapacity !== rightCapacity) return rightCapacity - leftCapacity
+
+      return a.sourceIndex - b.sourceIndex
+    })
+    .map(({ sourceIndex: _sourceIndex, ...item }, index) => ({ ...item, rank: index + 1 }))
 }
 
 export function formatTokenCount(value: number | null): string {

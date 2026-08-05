@@ -463,8 +463,8 @@
           >
             <div class="account-detail-card__head">
               <span class="account-detail-card__identity">
-                <b>#{{ item.rank }}</b>
-                <span>{{ item.name }}</span>
+                <b>#{{ item.priority ?? '--' }}</b>
+                <span class="account-detail-card__name">{{ item.name }}</span>
               </span>
               <span class="account-status-pill" :class="item.status">{{ item.statusText }}</span>
             </div>
@@ -1193,7 +1193,7 @@ async function resizeUpdaterWindowToContent() {
   try {
     const api = await loadTauriWindowApi()
     if (!api) return
-    await api.getCurrentWindow().setSize(new api.LogicalSize(420, panelHeight + 16))
+    await api.getCurrentWindow().setSize(new api.LogicalSize(420, panelHeight + 36))
   } catch {
     return
   }
