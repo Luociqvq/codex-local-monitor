@@ -908,6 +908,49 @@ describe('App settings sync', () => {
     expect(wrapper.text()).toContain('模型A')
   })
 
+  it('finishes a slow expanded user model request after the periodic ranking refresh', async () => {
+    const metrics = {
+      todayTotalTokens: 15000000,
+      todayTotalCost: 3.5,
+      poolRemainingPercent: null,
+      poolLatestResetAt: null,
+      poolResetItems: [],
+      poolAccounts: null,
+      poolCapacity: null,
+      poolAccountDetails: [],
+      userRanking: [{
+        rank: 1,
+        userId: 1,
+        name: '慢查询用户',
+        email: 'slow@example.com',
+        displayName: '慢查询用户（slow@example.com）',
+        tokens: 15000000,
+        actualCost: 3.5
+      }],
+      updatedAt: '2026-03-16T09:00:00.000Z'
+    } as Awaited<ReturnType<typeof fetchAdminMonitorMetrics>>
+    let resolveModels: ((models: Awaited<ReturnType<typeof fetchAdminUserModelUsage>>) => void) | undefined
+    vi.mocked(fetchAdminMonitorMetrics).mockResolvedValue(metrics)
+    vi.mocked(fetchAdminUserModelUsage).mockImplementationOnce(() => new Promise((resolve) => {
+      resolveModels = resolve
+    }))
+    localStorage.setItem(settingsStorageKey, JSON.stringify(baseSettings))
+    const wrapper = mount(App)
+    await flushPromises()
+
+    await wrapper.get('button.ranking-row').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('加载模型用量中...')
+
+    await vi.advanceTimersByTimeAsync(baseSettings.refreshSeconds * 1000)
+    await flushPromises()
+    resolveModels?.([{ model: 'gpt-5.6-sol', requests: 4, tokens: 14090000, actualCost: 2.52 }])
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('加载模型用量中...')
+    expect(wrapper.text()).toContain('gpt-5.6-sol')
+  })
+
   it('shows the model ranking and reorders expanded users with the selected column', async () => {
     vi.mocked(fetchAdminModelUsageRanking).mockResolvedValueOnce([
       { model: '高费用模型', requests: 300, tokens: 3000000, actualCost: 2.9 },

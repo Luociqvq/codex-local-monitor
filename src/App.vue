@@ -679,7 +679,7 @@ const downloadPercent = ref<number | null>(null)
 let availableUpdate: import('@tauri-apps/plugin-updater').Update | null = null
 let timer: number | null = null
 let saveMessageTimer: number | null = null
-let rankingModelUsageRefreshEpoch = 0
+const rankingModelUsageRequestEpochs = new Map<string, number>()
 let modelRankingRefreshEpoch = 0
 let unlistenMoved: (() => void) | null = null
 let unlistenSettingsChanged: (() => void) | null = null
@@ -821,13 +821,11 @@ async function refreshPersonal() {
 
 async function refreshAdmin() {
   if (!hasAdmin.value) return
-  const refreshEpoch = ++rankingModelUsageRefreshEpoch
   adminMetrics.value = await fetchAdminMonitorMetrics({
     baseUrl: settings.value.sub2apiBaseUrl,
     apiKey: settings.value.adminApiKey,
     poolGroupNames: settings.value.poolGroupNames
   })
-  if (refreshEpoch !== rankingModelUsageRefreshEpoch) return
   // 刷新指标时保留已展开的明细，避免手动或定时刷新打断当前查看。
   if (rankingView.value === 'models') void loadModelRanking()
 }
@@ -935,19 +933,20 @@ async function toggleRankingUser(item: UserTodayUsageRankItem) {
   }
 
   rankingModelUsageState.value = { ...rankingModelUsageState.value, [key]: 'loading' }
-  const refreshEpoch = rankingModelUsageRefreshEpoch
+  const requestEpoch = (rankingModelUsageRequestEpochs.get(key) ?? 0) + 1
+  rankingModelUsageRequestEpochs.set(key, requestEpoch)
   void resizePlatformWindowToContent()
   try {
     const models = await fetchAdminUserModelUsage({
       baseUrl: settings.value.sub2apiBaseUrl,
       apiKey: settings.value.adminApiKey
     }, item.userId)
-    if (refreshEpoch === rankingModelUsageRefreshEpoch) {
+    if (rankingModelUsageRequestEpochs.get(key) === requestEpoch) {
       rankingModelUsage.value = { ...rankingModelUsage.value, [key]: models }
       rankingModelUsageState.value = { ...rankingModelUsageState.value, [key]: 'ready' }
     }
   } catch {
-    if (refreshEpoch === rankingModelUsageRefreshEpoch) {
+    if (rankingModelUsageRequestEpochs.get(key) === requestEpoch) {
       rankingModelUsageState.value = { ...rankingModelUsageState.value, [key]: 'error' }
     }
   } finally {
