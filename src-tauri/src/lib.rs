@@ -17,9 +17,9 @@ const WIDGET_ORB_HEIGHT: f64 = 50.0;
 const WIDGET_CARD_WIDTH: f64 = 314.0;
 const WIDGET_CARD_HEIGHT: f64 = 382.0;
 const WIDGET_SETUP_WIDTH: f64 = 390.0;
-const WIDGET_SETUP_HEIGHT: f64 = 440.0;
+const WIDGET_SETUP_HEIGHT: f64 = 490.0;
 const WIDGET_SETTINGS_WIDTH: f64 = 390.0;
-const WIDGET_SETTINGS_HEIGHT: f64 = 560.0;
+const WIDGET_SETTINGS_HEIGHT: f64 = 620.0;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]

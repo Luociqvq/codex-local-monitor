@@ -4,9 +4,9 @@
 [![Build](https://github.com/Luociqvq/sub2api-pulse/actions/workflows/release.yml/badge.svg)](https://github.com/Luociqvq/sub2api-pulse/actions/workflows/release.yml)
 [![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white)](https://v2.tauri.app/)
 
-Sub2API Pulse 是一个面向 [sub2api](https://github.com/Wei-Shaw/sub2api) 的轻量桌面监控器。它以紧凑悬浮岛常驻桌面，集中展示 Token 消耗、实际费用、账号池状态、服务器健康度和 OpenAI/Codex 并发情况。
+Sub2API Pulse 是一个同时支持 [sub2api](https://github.com/Wei-Shaw/sub2api) 与 [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) 的轻量桌面监控器。它以紧凑悬浮岛常驻桌面，按数据源展示 Token 消耗、实际费用、请求累计、账号状态、服务器健康度和 OpenAI/Codex 并发情况。
 
-数据由客户端直接从你配置的 sub2api 实例读取，不经过中转服务。
+数据由客户端直接从你配置的服务实例读取，不经过中转服务。
 
 ## 界面预览
 
@@ -31,15 +31,16 @@ Sub2API Pulse 是一个面向 [sub2api](https://github.com/Wei-Shaw/sub2api) 的
 ## 功能
 
 - **实时用量**：今日 Token、今日实际金额和最近请求延迟。
+- **CLIProxyAPI 监控**：服务健康、累计请求、失败请求以及 OAuth/API Key 账户状态。
 - **账号池概览**：可用账号、账号总量、限流/异常数量和平均配额余量。
 - **服务器状态**：CPU、内存、接口延迟和运行时长。
 - **Codex 调度**：OpenAI 平台请求的运行数与排队数。
-- **双凭据模式**：支持管理员 API Key，也支持只配置个人 Token。
+- **多数据源配置**：sub2api 支持管理员 API Key/个人 Token；CLIProxyAPI 使用 Management Key。
 - **桌面悬浮交互**：自动收起、固定展开、保持置顶和托盘快捷菜单。
 - **后台节流**：窗口隐藏时暂停轮询，恢复显示后立即刷新。
 - **自动更新**：通过 GitHub Releases 检查并安装新版本。
 
-> Codex 调度数据来自 sub2api Ops 并发接口，不是本机 Codex Desktop 的任务列表。未启用 Ops 监控时，该区域会显示“未提供”，不影响其他指标。
+> Codex 调度数据来自 sub2api Ops 并发接口，不是本机 Codex Desktop 的任务列表。CLIProxyAPI v6.10+ 已移除内置 Token 用量统计，因此 CLIProxyAPI 模式明确展示请求和账户健康数据，不伪造 Token 或费用指标。
 
 ## 安装
 
@@ -54,7 +55,9 @@ macOS 构建由发布工作流生成。首次打开未签名的本地构建时�
 
 ## 配置
 
-首次启动时填写以下信息：
+首次启动先选择数据源，再填写对应信息。
+
+sub2api：
 
 | 配置项 | 必填 | 说明 |
 | --- | --- | --- |
@@ -66,9 +69,19 @@ macOS 构建由发布工作流生成。首次打开未签名的本地构建时�
 
 管理员 API Key 与个人 Token 可以同时配置。保存前可使用“测试连接”验证地址和凭据。
 
+CLIProxyAPI：
+
+| 配置项 | 必填 | 说明 |
+| --- | --- | --- |
+| 服务器地址 | 是 | CLIProxyAPI 根地址，默认端口示例 `http://127.0.0.1:8317` |
+| Management Key | 是 | `remote-management.secret-key` 对应的明文密钥 |
+| 刷新间隔 | 否 | 支持 10-300 秒，默认 30 秒 |
+
+远程读取 CLIProxyAPI 时，还需在服务端启用 `remote-management.allow-remote`，并建议配合 HTTPS 或可信内网使用。
+
 ## 数据接口
 
-Sub2API Pulse 根据凭据和服务能力调用以下接口：
+sub2api 模式根据凭据和服务能力调用：
 
 ```text
 /api/v1/usage/dashboard/stats
@@ -83,14 +96,23 @@ Sub2API Pulse 根据凭据和服务能力调用以下接口：
 
 Ops 接口是可选能力，请求超时或服务端未启用时不会阻断主面板刷新。
 
+CLIProxyAPI 模式只调用只读接口：
+
+```text
+/healthz
+/v0/management/auth-files
+```
+
+Management Key 通过 `Authorization: Bearer MANAGEMENT_KEY` 发送。插件不会调用会弹出队列数据的 `/v0/management/usage-queue`，也不会修改配置或账户。
+
 ## 隐私与安全
 
 - 服务器地址与凭据保存在本机 WebView 存储中。
-- 凭据只发送到你填写的 sub2api 服务地址。
+- 凭据只发送到你填写的 sub2api 或 CLIProxyAPI 服务地址。
 - 项目不内置分析、遥测或第三方数据中转。
 - 公开仓库不包含作者或使用者的服务器地址、API Key、Token 等运行配置。
 
-建议为外网部署启用 HTTPS，并定期轮换管理员 API Key 与个人 Token。
+建议为外网部署启用 HTTPS，并定期轮换管理员 API Key、个人 Token 与 Management Key。
 
 ## 本地开发
 

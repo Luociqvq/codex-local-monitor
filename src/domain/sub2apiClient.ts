@@ -135,6 +135,7 @@ export async function fetchAdminMonitorMetrics(config: AdminMonitorConfig): Prom
   const requestLatencyMs = Math.max(0, Date.now() - startedAt)
 
   return {
+    source: 'sub2api',
     todayTotalTokens: parseTodayTokens(statsPayload),
     todayTotalCost: parseTodayActualCost(statsPayload),
     totalTokens: parseTotalTokens(statsPayload),
@@ -357,7 +358,8 @@ async function requestJson(
   headers: Record<string, string>,
   method: HttpMethod = 'GET',
   body?: unknown,
-  timeoutMs = requestTimeoutMs
+  timeoutMs = requestTimeoutMs,
+  serviceLabel = 'sub2api'
 ): Promise<unknown> {
   const invoke = await loadTauriInvoke()
   if (invoke) {
@@ -373,22 +375,29 @@ async function requestJson(
       : undefined
   })
   if (!response.ok) {
-    throw new Error(await formatSub2apiHttpError(response))
+    throw new Error(await formatApiHttpError(response, serviceLabel))
   }
   return response.json()
 }
 
-async function formatSub2apiHttpError(response: Response): Promise<string> {
+export { requestJson }
+
+async function formatApiHttpError(response: Response, serviceLabel: string): Promise<string> {
   const detail = await readSub2apiErrorDetail(response)
   const authFailed = response.status === 401 || response.status === 403
   if (authFailed) {
+    if (serviceLabel === 'sub2api') {
+      return detail
+        ? `认证失败，Token 错误或已失效：${detail}`
+        : `认证失败，Token 错误或已失效（HTTP ${response.status}）`
+    }
     return detail
-      ? `认证失败，Token 错误或已失效：${detail}`
-      : `认证失败，Token 错误或已失效（HTTP ${response.status}）`
+      ? `${serviceLabel} 认证失败：${detail}`
+      : `${serviceLabel} 认证失败（HTTP ${response.status}）`
   }
   return detail
-    ? `sub2api 请求失败（HTTP ${response.status}）：${detail}`
-    : `sub2api 请求失败：HTTP ${response.status}`
+    ? `${serviceLabel} 请求失败（HTTP ${response.status}）：${detail}`
+    : `${serviceLabel} 请求失败：HTTP ${response.status}`
 }
 
 async function readSub2apiErrorDetail(response: Response): Promise<string> {

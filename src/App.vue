@@ -26,13 +26,13 @@
   <main v-else-if="isSettingsView || showInlineSettings" class="utility-shell settings-shell">
     <section class="utility-panel settings-panel">
       <header class="utility-header"><div class="title-with-icon"><SlidersHorizontal :size="17" /><strong>连接设置</strong></div><button class="icon-button" type="button" title="关闭" @click="closeWindow"><X :size="17" /></button></header>
-      <p class="settings-caption">sub2api / 监控数据源</p>
+      <p class="settings-caption">{{ draft.dataSource === 'cliproxyapi' ? 'CLIProxyAPI / Management API' : 'sub2api / 管理与个人用量' }}</p>
       <div class="setup-steps"><span class="is-active">01</span><i /><span>连接</span><i /><span>显示</span></div>
       <form class="settings-form" @submit.prevent="saveDraft">
-        <label class="field"><span>服务器地址</span><div class="input-wrap"><Link2 :size="14" /><input v-model="draft.sub2apiBaseUrl" autocomplete="url" placeholder="http://127.0.0.1:8081" /></div></label>
-        <label class="field"><span>管理员 API Key <em>账号、服务器与 Codex</em></span><div class="input-wrap"><KeyRound :size="14" /><input v-model="draft.adminApiKey" autocomplete="off" type="password" placeholder="读取管理员指标" /></div></label>
-        <label class="field"><span>个人 Token <em>可选</em></span><div class="input-wrap"><KeyRound :size="14" /><input v-model="draft.personalToken" autocomplete="off" type="password" placeholder="读取个人 Token" /></div></label>
-        <label class="field"><span>账号池分组 <em>可选</em></span><div class="input-wrap"><Database :size="14" /><input v-model="draft.poolGroupName" placeholder="留空统计全部账号" /></div></label>
+        <fieldset class="source-picker"><legend>数据源</legend><label :class="{ active: draft.dataSource === 'sub2api' }"><input v-model="draft.dataSource" type="radio" value="sub2api" /><span><strong>sub2api</strong><small>用量、费用、账号池</small></span></label><label :class="{ active: draft.dataSource === 'cliproxyapi' }"><input v-model="draft.dataSource" type="radio" value="cliproxyapi" /><span><strong>CLIProxyAPI</strong><small>服务与账户状态</small></span></label></fieldset>
+        <label class="field"><span>服务器地址</span><div class="input-wrap"><Link2 :size="14" /><input v-model="draft.sub2apiBaseUrl" autocomplete="url" :placeholder="draft.dataSource === 'cliproxyapi' ? 'http://127.0.0.1:8317' : 'http://127.0.0.1:8081'" /></div></label>
+        <template v-if="draft.dataSource === 'sub2api'"><label class="field"><span>管理员 API Key <em>账号、服务器与 Codex</em></span><div class="input-wrap"><KeyRound :size="14" /><input v-model="draft.adminApiKey" autocomplete="off" type="password" placeholder="读取管理员指标" /></div></label><label class="field"><span>个人 Token <em>可选</em></span><div class="input-wrap"><KeyRound :size="14" /><input v-model="draft.personalToken" autocomplete="off" type="password" placeholder="读取个人 Token" /></div></label><label class="field"><span>账号池分组 <em>可选</em></span><div class="input-wrap"><Database :size="14" /><input v-model="draft.poolGroupName" placeholder="留空统计全部账号" /></div></label></template>
+        <label v-else class="field"><span>Management Key <em>只读管理接口</em></span><div class="input-wrap"><KeyRound :size="14" /><input v-model="draft.cliProxyManagementKey" autocomplete="off" type="password" placeholder="remote-management.secret-key" /></div></label>
         <label class="field field-inline"><span>自动同步</span><div class="number-input"><input v-model.number="draft.refreshSeconds" min="10" max="300" step="5" type="number" /><small>秒</small></div></label>
         <p v-if="formError" class="form-error" role="alert"><AlertTriangle :size="14" />{{ formError }}</p><p v-if="saveMessage" class="form-success" role="status"><CheckCircle2 :size="14" />{{ saveMessage }}</p>
         <div class="settings-actions"><button class="secondary-button" type="button" :disabled="testing" @click="testDraft"><LoaderCircle v-if="testing" class="spinning" :size="15" /><Wifi v-else :size="15" />测试连接</button><button class="primary-button" type="submit"><CheckCircle2 :size="15" />保存配置</button></div>
@@ -42,16 +42,16 @@
 
   <main v-else class="app-shell" :class="[`tone-${stateTone}`, { 'is-expanded': expanded, 'is-setup': !configured }]">
     <section ref="widgetRef" class="quota-surface" :class="{ 'quota-surface--orb': configured && !expanded, 'quota-surface--card': expanded || !configured, 'is-idle': configured && !expanded && !hovered }" data-tauri-drag-region @mouseenter="handleHover(true)" @mouseleave="handleHover(false)" @mousedown="handleSurfaceMouseDown">
-      <button v-if="configured && !expanded" class="quota-orb" type="button" :aria-label="`展开监控，${connectionLabel}，今日 Token ${formattedTodayTokens}，Codex ${codexStatusLabel}`" @click.stop="expandWidget">
+      <button v-if="configured && !expanded" class="quota-orb" type="button" :aria-label="`展开监控，${connectionLabel}，${primaryMetricLabel} ${formattedTodayTokens}`" @click.stop="expandWidget">
         <span class="orb-sheen" aria-hidden="true" />
         <span class="island-status" data-window-drag title="拖动悬浮窗" @mousedown.stop="startWindowDrag"><GripHorizontal :size="12" aria-hidden="true" /><i class="orb-led" :class="stateTone" /></span>
-        <span class="island-metric"><strong>{{ compactTodayTokens }}</strong><small>TOKENS</small></span>
+        <span class="island-metric"><strong>{{ compactTodayTokens }}</strong><small>{{ isCliProxy ? 'REQS' : 'TOKENS' }}</small></span>
         <span class="island-activity" :class="codexTone" aria-hidden="true"><Bot :size="14" /></span>
       </button>
 
       <section v-else-if="configured" class="quota-card" :class="`quota-card--${stateTone}`">
         <header class="card-header" data-tauri-drag-region @mousedown.stop="handleSurfaceMouseDown">
-          <div class="card-title"><p class="eyebrow">SUB2API · {{ dataSourceLabel === '管理员视角' ? 'ADMIN' : 'PERSONAL' }}</p><p class="updated">今日 Token</p></div><span class="drag-cue" title="拖动悬浮窗"><GripHorizontal :size="13" aria-hidden="true" /></span>
+          <div class="card-title"><p class="eyebrow">{{ sourceBrand }} · {{ dataSourceLabel }}</p><p class="updated">{{ primaryMetricLabel }}</p></div><span class="drag-cue" title="拖动悬浮窗"><GripHorizontal :size="13" aria-hidden="true" /></span>
           <nav class="card-actions" aria-label="监控控制" @mousedown.stop>
             <span class="usage-indicator" :class="connectionState" :title="connectionLabel"><i /></span>
             <button class="control-button" type="button" :title="loading ? '正在刷新' : '刷新数据'" :aria-label="loading ? '正在刷新' : '刷新数据'" :disabled="loading || !configured" @click.stop="refreshAll"><RefreshCw :class="{ spinning: loading }" :size="13" /></button>
@@ -61,23 +61,23 @@
           </nav>
         </header>
 
-        <section class="primary-metric hero-metric" aria-label="今日 Token"><strong>{{ formattedTodayTokens }}</strong><span>tokens</span></section>
+        <section class="primary-metric hero-metric" :aria-label="primaryMetricLabel"><strong>{{ formattedTodayTokens }}</strong><span>{{ primaryMetricUnit }}</span></section>
         <div class="metric-meta"><span class="status-copy"><i class="status-dot" :class="connectionState" />{{ connectionLabel }}</span><span>{{ lastUpdatedLabel }}</span></div>
-        <div class="quota-progress" role="progressbar" aria-label="账号池余量" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="poolRemainingNumber ?? undefined"><i :style="{ width: poolProgressWidth }" /></div>
-        <p class="reset-time">账号池余量 {{ formattedPoolRemaining }}<span v-if="errorMessage"> · {{ errorMessage }}</span></p>
+        <div class="quota-progress" role="progressbar" :aria-label="availabilityLabel" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="poolRemainingNumber ?? undefined"><i :style="{ width: poolProgressWidth }" /></div>
+        <p class="reset-time">{{ availabilityLabel }} {{ formattedPoolRemaining }}<span v-if="errorMessage"> · {{ errorMessage }}</span></p>
 
         <section class="metric-grid compact-metrics" aria-label="核心指标">
-          <article class="metric-card metric-card--cost"><span>今日消费</span><strong>{{ formattedTodayCost }}</strong><small>{{ totalCostLabel }}</small></article>
-          <article class="metric-card metric-card--quota"><span>账号余量</span><strong>{{ availableAccountCount }}</strong><small>{{ accountSummaryLabel }}</small></article>
+          <article class="metric-card metric-card--cost"><span>{{ secondaryMetricLabel }}</span><strong>{{ formattedTodayCost }}</strong><small>{{ totalCostLabel }}</small></article>
+          <article class="metric-card metric-card--quota"><span>{{ accountMetricLabel }}</span><strong>{{ availableAccountCount }}</strong><small>{{ accountSummaryLabel }}</small></article>
         </section>
 
         <section class="info-section server-section"><div class="section-heading"><span><Gauge :size="13" />服务器性能</span><small>{{ endpointLabel }}</small></div><div class="performance-grid"><div class="performance-item"><span><Cpu :size="12" />CPU</span><strong>{{ formattedCpu }}</strong><div class="thin-progress"><i :class="cpuClass" :style="{ width: performanceWidth(adminMetrics.serverCpuPercent) }" /></div></div><div class="performance-item"><span><Database :size="12" />内存</span><strong>{{ formattedMemory }}</strong><div class="thin-progress"><i :class="memoryClass" :style="{ width: performanceWidth(adminMetrics.serverMemoryPercent) }" /></div></div><div class="performance-item performance-item--compact"><span><Wifi :size="12" />延迟</span><strong>{{ formattedLatency }}</strong></div><div class="performance-item performance-item--compact"><span><Clock3 :size="12" />运行</span><strong>{{ formattedUptime }}</strong></div></div></section>
 
-        <section class="codex-section" :class="codexTone"><div class="section-heading"><span><Bot :size="13" />Codex 调度</span><b class="codex-badge">{{ codexStatusLabel }}</b></div><div class="codex-content"><div class="codex-pulse"><i /><i /><i /></div><div class="codex-copy"><strong>{{ codexHeadline }}</strong><span>{{ codexDetail }}</span></div><div class="task-counts"><b>{{ taskCount(adminMetrics.activeCodexTasks) }}</b><small>运行</small><b>{{ taskCount(adminMetrics.queuedCodexTasks) }}</b><small>排队</small></div></div></section>
+        <section class="codex-section" :class="codexTone"><div class="section-heading"><span><Bot :size="13" />{{ activitySectionTitle }}</span><b class="codex-badge">{{ codexStatusLabel }}</b></div><div class="codex-content"><div class="codex-pulse"><i /><i /><i /></div><div class="codex-copy"><strong>{{ codexHeadline }}</strong><span>{{ codexDetail }}</span></div><div class="task-counts"><b>{{ activityPrimaryCount }}</b><small>{{ activityPrimaryLabel }}</small><b>{{ activitySecondaryCount }}</b><small>{{ activitySecondaryLabel }}</small></div></div></section>
         <footer class="widget-footer"><span><i class="footer-led" :class="connectionState" />{{ refreshLabel }}</span><button type="button" class="collapse-button" title="收起悬浮窗" aria-label="收起悬浮窗" @mousedown.stop @click.stop="collapseWidget"><ChevronDown :size="14" /></button></footer>
       </section>
 
-      <section v-if="!configured" class="onboarding quota-card quota-card--idle"><header class="card-header" data-tauri-drag-region @mousedown.stop="handleSurfaceMouseDown"><div class="card-title"><p class="eyebrow">SUB2API PULSE</p><p class="updated">连接你的 sub2api</p></div><span class="drag-cue" title="拖动悬浮窗"><GripHorizontal :size="13" aria-hidden="true" /></span><Sparkles :size="20" class="setup-mark" aria-hidden="true" /></header><p class="setup-intro">先配置服务器和认证信息，悬浮窗会自动收起为 orb。</p><form class="quick-setup" @submit.prevent="saveDraft"><label class="field"><span>服务器地址</span><div class="input-wrap"><Link2 :size="14" /><input v-model="draft.sub2apiBaseUrl" autocomplete="url" type="url" placeholder="http://127.0.0.1:8081" /></div></label><label class="field"><span>管理员 API Key <em>可选</em></span><div class="input-wrap"><KeyRound :size="14" /><input v-model="draft.adminApiKey" autocomplete="off" type="password" placeholder="管理员 API Key" /></div></label><label class="field"><span>个人 Token <em>可选</em></span><div class="input-wrap"><KeyRound :size="14" /><input v-model="draft.personalToken" autocomplete="off" type="password" placeholder="个人用量 Token" /></div></label><p v-if="formError" class="form-error" role="alert"><AlertTriangle :size="14" />{{ formError }}</p><button class="primary-button primary-button--wide" type="submit"><Wifi :size="15" />连接并开始监控</button></form><button class="text-button" type="button" @click="openSettings">打开完整配置</button></section>
+      <section v-if="!configured" class="onboarding quota-card quota-card--idle"><header class="card-header" data-tauri-drag-region @mousedown.stop="handleSurfaceMouseDown"><div class="card-title"><p class="eyebrow">SUB2API PULSE</p><p class="updated">连接监控数据源</p></div><span class="drag-cue" title="拖动悬浮窗"><GripHorizontal :size="13" aria-hidden="true" /></span><Sparkles :size="20" class="setup-mark" aria-hidden="true" /></header><p class="setup-intro">支持 sub2api 与 CLIProxyAPI，先选择数据源并填写只读凭据。</p><form class="quick-setup" @submit.prevent="saveDraft"><fieldset class="source-picker source-picker--compact"><legend>数据源</legend><label :class="{ active: draft.dataSource === 'sub2api' }"><input v-model="draft.dataSource" type="radio" value="sub2api" /><span><strong>sub2api</strong></span></label><label :class="{ active: draft.dataSource === 'cliproxyapi' }"><input v-model="draft.dataSource" type="radio" value="cliproxyapi" /><span><strong>CLIProxyAPI</strong></span></label></fieldset><label class="field"><span>服务器地址</span><div class="input-wrap"><Link2 :size="14" /><input v-model="draft.sub2apiBaseUrl" autocomplete="url" type="url" :placeholder="draft.dataSource === 'cliproxyapi' ? 'http://127.0.0.1:8317' : 'http://127.0.0.1:8081'" /></div></label><template v-if="draft.dataSource === 'sub2api'"><label class="field"><span>管理员 API Key <em>可选</em></span><div class="input-wrap"><KeyRound :size="14" /><input v-model="draft.adminApiKey" autocomplete="off" type="password" placeholder="管理员 API Key" /></div></label><label class="field"><span>个人 Token <em>可选</em></span><div class="input-wrap"><KeyRound :size="14" /><input v-model="draft.personalToken" autocomplete="off" type="password" placeholder="个人用量 Token" /></div></label></template><label v-else class="field"><span>Management Key</span><div class="input-wrap"><KeyRound :size="14" /><input v-model="draft.cliProxyManagementKey" autocomplete="off" type="password" placeholder="remote-management.secret-key" /></div></label><p v-if="formError" class="form-error" role="alert"><AlertTriangle :size="14" />{{ formError }}</p><button class="primary-button primary-button--wide" type="submit"><Wifi :size="15" />连接并开始监控</button></form><button class="text-button" type="button" @click="openSettings">打开完整配置</button></section>
     </section>
   </main>
 </template>
@@ -111,6 +111,7 @@ import {
   X
 } from 'lucide-vue-next'
 import { fetchAdminMonitorMetrics, fetchSub2apiMetrics } from '@/domain/sub2apiClient'
+import { fetchCliProxyApiMetrics } from '@/domain/cliProxyApiClient'
 import {
   formatCost,
   formatTokenCount,
@@ -121,6 +122,7 @@ import {
 import {
   defaultSettings,
   hasAdminSettings,
+  hasCliProxySettings,
   hasPersonalSettings,
   loadSettings,
   saveSettings,
@@ -165,15 +167,31 @@ let unlistenMonitorVisibility: (() => void) | null = null
 let tauriWindowApi: TauriWindowApi | null = null
 let availableUpdate: import('@tauri-apps/plugin-updater').Update | null = null
 
-const configured = computed(() => hasAdminSettings(settings.value) || hasPersonalSettings(settings.value))
-const hasAdmin = computed(() => hasAdminSettings(settings.value))
-const hasPersonal = computed(() => hasPersonalSettings(settings.value))
+const isCliProxy = computed(() => settings.value.dataSource === 'cliproxyapi')
+const hasCliProxy = computed(() => hasCliProxySettings(settings.value))
+const configured = computed(() => isCliProxy.value
+  ? hasCliProxy.value
+  : hasAdminSettings(settings.value) || hasPersonalSettings(settings.value))
+const hasAdmin = computed(() => !isCliProxy.value && hasAdminSettings(settings.value))
+const hasPersonal = computed(() => !isCliProxy.value && hasPersonalSettings(settings.value))
 const endpointLabel = computed(() => settings.value.sub2apiBaseUrl ? compactEndpoint(settings.value.sub2apiBaseUrl) : '未连接')
-const dataSourceLabel = computed(() => hasAdmin.value ? '管理员视角' : '个人视角')
-const formattedTodayTokens = computed(() => formatTokenCount(hasAdmin.value ? adminMetrics.value.todayTotalTokens : personalMetrics.value.todayTokens))
-const compactTodayTokens = computed(() => compactTokenCount(hasAdmin.value ? adminMetrics.value.todayTotalTokens : personalMetrics.value.todayTokens))
-const formattedTodayCost = computed(() => formatCost(hasAdmin.value ? adminMetrics.value.todayTotalCost : personalMetrics.value.todayCost))
+const sourceBrand = computed(() => isCliProxy.value ? 'CLI PROXY API' : 'SUB2API')
+const dataSourceLabel = computed(() => isCliProxy.value ? 'MANAGEMENT' : hasAdmin.value ? 'ADMIN' : 'PERSONAL')
+const primaryMetricLabel = computed(() => isCliProxy.value ? '累计请求' : '今日 Token')
+const primaryMetricUnit = computed(() => isCliProxy.value ? 'requests' : 'tokens')
+const secondaryMetricLabel = computed(() => isCliProxy.value ? '失败请求' : '今日消费')
+const accountMetricLabel = computed(() => isCliProxy.value ? '可用账户' : '账号余量')
+const availabilityLabel = computed(() => isCliProxy.value ? '账户可用率' : '账号池余量')
+const primaryMetricValue = computed(() => isCliProxy.value ? adminMetrics.value.totalRequests ?? null : hasAdmin.value ? adminMetrics.value.todayTotalTokens : personalMetrics.value.todayTokens)
+const formattedTodayTokens = computed(() => formatTokenCount(primaryMetricValue.value))
+const compactTodayTokens = computed(() => compactTokenCount(primaryMetricValue.value))
+const formattedTodayCost = computed(() => isCliProxy.value ? formatTokenCount(adminMetrics.value.failedRequests ?? null) : formatCost(hasAdmin.value ? adminMetrics.value.todayTotalCost : personalMetrics.value.todayCost))
 const formattedPoolRemaining = computed(() => {
+  if (isCliProxy.value) {
+    const pool = adminMetrics.value.poolAccounts
+    if (!pool || pool.total <= 0) return '--'
+    return `${Math.round((pool.active / pool.total) * 100)}%`
+  }
   const value = adminMetrics.value.poolRemainingPercent ?? adminMetrics.value.poolSevenDayRemainingPercent ?? null
   return value === null ? '--' : `${Math.round(value)}%`
 })
@@ -182,20 +200,31 @@ const availableAccountCount = computed(() => {
   return pool ? `${pool.active} / ${pool.total}` : '-- / --'
 })
 const poolProgressWidth = computed(() => {
+  if (isCliProxy.value) {
+    const pool = adminMetrics.value.poolAccounts
+    if (!pool || pool.total <= 0) return '0%'
+    return `${Math.round((pool.active / pool.total) * 100)}%`
+  }
   const value = adminMetrics.value.poolRemainingPercent ?? adminMetrics.value.poolSevenDayRemainingPercent ?? null
   return value === null ? '0%' : `${Math.min(100, Math.max(0, value))}%`
 })
 const poolRemainingNumber = computed(() => {
+  if (isCliProxy.value) {
+    const pool = adminMetrics.value.poolAccounts
+    if (!pool || pool.total <= 0) return null
+    return Math.round((pool.active / pool.total) * 100)
+  }
   const value = adminMetrics.value.poolRemainingPercent ?? adminMetrics.value.poolSevenDayRemainingPercent ?? null
   return value == null || Number.isNaN(value) ? null : Math.round(Math.min(100, Math.max(0, value)))
 })
 const accountSummaryLabel = computed(() => {
   const pool = adminMetrics.value.poolAccounts
-  if (!pool) return hasAdmin.value ? '账号状态未提供' : '需管理员 API Key'
-  const remaining = formattedPoolRemaining.value === '--' ? '' : ` · 余量 ${formattedPoolRemaining.value}`
+  if (!pool) return isCliProxy.value ? 'Management API 未返回账户' : hasAdmin.value ? '账号状态未提供' : '需管理员 API Key'
+  const remaining = formattedPoolRemaining.value === '--' ? '' : ` · ${isCliProxy.value ? '可用率' : '余量'} ${formattedPoolRemaining.value}`
   return `${pool.limited} 限流 · ${pool.error} 异常${remaining}`
 })
 const totalCostLabel = computed(() => {
+  if (isCliProxy.value) return 'Management API 累计统计'
   if (!hasAdmin.value) return '个人统计'
   const total = adminMetrics.value.totalActualCost
   return total == null ? '管理员统计' : `累计 ${formatCost(total)}`
@@ -229,12 +258,27 @@ const formattedUptime = computed(() => formatUptime(adminMetrics.value.serverUpt
 const cpuClass = computed(() => performanceTone(adminMetrics.value.serverCpuPercent))
 const memoryClass = computed(() => performanceTone(adminMetrics.value.serverMemoryPercent))
 const codexStatus = computed<CodexTaskStatus>(() => {
+  if (isCliProxy.value) {
+    const pool = adminMetrics.value.poolAccounts
+    if (adminMetrics.value.serverStatus === 'degraded') return 'error'
+    if (pool && pool.active > 0) return 'running'
+    return pool ? 'idle' : 'unknown'
+  }
   return adminMetrics.value.codexStatus ?? 'unknown'
 })
 const codexTone = computed(() => codexStatus.value === 'error' ? 'danger' : codexStatus.value === 'running' ? 'active' : codexStatus.value === 'queued' ? 'queued' : '')
-const codexStatusLabel = computed(() => ({ running: '运行中', queued: '排队中', idle: '空闲', error: '异常', unknown: '未提供' }[codexStatus.value]))
-const codexHeadline = computed(() => ({ running: '正在处理 Codex 任务', queued: '任务等待调度', idle: '当前没有活动任务', error: 'Codex 任务异常', unknown: '等待任务状态' }[codexStatus.value]))
-const codexDetail = computed(() => codexStatus.value === 'unknown' ? '当前部署未返回任务队列指标' : `${endpointLabel.value} · 低频采样`)
+const activitySectionTitle = computed(() => isCliProxy.value ? '代理账户' : 'Codex 调度')
+const codexStatusLabel = computed(() => isCliProxy.value
+  ? ({ running: '已就绪', queued: '繁忙', idle: '无可用账户', error: '异常', unknown: '未提供' }[codexStatus.value])
+  : ({ running: '运行中', queued: '排队中', idle: '空闲', error: '异常', unknown: '未提供' }[codexStatus.value]))
+const codexHeadline = computed(() => isCliProxy.value
+  ? (adminMetrics.value.poolAccounts ? `${adminMetrics.value.poolAccounts.active} 个账户可调度` : '等待账户状态')
+  : ({ running: '正在处理 Codex 任务', queued: '任务等待调度', idle: '当前没有活动任务', error: 'Codex 任务异常', unknown: '等待任务状态' }[codexStatus.value]))
+const codexDetail = computed(() => isCliProxy.value ? 'CLIProxyAPI Management API · 只读' : codexStatus.value === 'unknown' ? '当前部署未返回任务队列指标' : `${endpointLabel.value} · 低频采样`)
+const activityPrimaryCount = computed(() => isCliProxy.value ? taskCount(adminMetrics.value.poolAccounts?.active) : taskCount(adminMetrics.value.activeCodexTasks))
+const activitySecondaryCount = computed(() => isCliProxy.value ? taskCount(adminMetrics.value.poolAccounts?.error) : taskCount(adminMetrics.value.queuedCodexTasks))
+const activityPrimaryLabel = computed(() => isCliProxy.value ? '可用' : '运行')
+const activitySecondaryLabel = computed(() => isCliProxy.value ? '异常' : '排队')
 const updateBusy = computed(() => updateState.value === 'checking' || updateState.value === 'downloading')
 
 let collapseTimer: number | null = null
@@ -244,6 +288,8 @@ function emptyAdminMetrics(): AdminMonitorMetrics {
   return {
     todayTotalTokens: null,
     todayTotalCost: null,
+    totalRequests: null,
+    failedRequests: null,
     totalTokens: null,
     totalActualCost: null,
     totalAccountCost: null,
@@ -307,7 +353,7 @@ async function resizeSetupWindow() {
   if (!api) return
   try {
     const { LogicalSize } = await import('@tauri-apps/api/dpi')
-    await api.getCurrentWindow().setSize(new LogicalSize(390, 440))
+    await api.getCurrentWindow().setSize(new LogicalSize(390, 490))
   } catch { return }
 }
 
@@ -324,7 +370,7 @@ async function resizeSettingsWindow() {
   if (!api) return
   try {
     const { LogicalSize } = await import('@tauri-apps/api/dpi')
-    await api.getCurrentWindow().setSize(new LogicalSize(390, 560))
+    await api.getCurrentWindow().setSize(new LogicalSize(390, 620))
   } catch { return }
 }
 
@@ -418,7 +464,16 @@ async function refreshAll() {
   errorMessage.value = ''
   const errors: string[] = []
   try {
-    if (hasAdmin.value) {
+    if (hasCliProxy.value) {
+      try {
+        adminMetrics.value = await fetchCliProxyApiMetrics({
+          baseUrl: settings.value.sub2apiBaseUrl,
+          managementKey: settings.value.cliProxyManagementKey
+        })
+      } catch (error) {
+        errors.push(errorMessageOf(error, 'CLIProxyAPI 接口请求失败'))
+      }
+    } else if (hasAdmin.value) {
       try {
         adminMetrics.value = await fetchAdminMonitorMetrics({
           baseUrl: settings.value.sub2apiBaseUrl,
@@ -485,7 +540,11 @@ function validateDraft(): boolean {
     formError.value = '服务器地址需要以 http:// 或 https:// 开头'
     return false
   }
-  if (!draft.adminApiKey.trim() && !draft.personalToken.trim()) {
+  if (draft.dataSource === 'cliproxyapi' && !draft.cliProxyManagementKey.trim()) {
+    formError.value = '请填写 CLIProxyAPI Management Key'
+    return false
+  }
+  if (draft.dataSource === 'sub2api' && !draft.adminApiKey.trim() && !draft.personalToken.trim()) {
     formError.value = '至少填写管理员 API Key 或个人 Token'
     return false
   }
@@ -499,6 +558,7 @@ function saveDraft() {
     ...draft,
     sub2apiBaseUrl: draft.sub2apiBaseUrl.trim().replace(/\/+$/, ''),
     adminApiKey: draft.adminApiKey.trim(),
+    cliProxyManagementKey: draft.cliProxyManagementKey.trim(),
     personalToken: draft.personalToken.trim(),
     personalFloatingEnabled: draft.personalToken.trim() !== '',
     poolGroupName: draft.poolGroupName.trim(),
@@ -529,7 +589,9 @@ async function testDraft() {
   testing.value = true
   formError.value = ''
   try {
-    if (draft.adminApiKey.trim()) {
+    if (draft.dataSource === 'cliproxyapi') {
+      await fetchCliProxyApiMetrics({ baseUrl: draft.sub2apiBaseUrl, managementKey: draft.cliProxyManagementKey })
+    } else if (draft.adminApiKey.trim()) {
       await fetchAdminMonitorMetrics({ baseUrl: draft.sub2apiBaseUrl, apiKey: draft.adminApiKey, poolGroupNames: [], lightweight: true })
     } else {
       await fetchSub2apiMetrics({ baseUrl: draft.sub2apiBaseUrl, token: draft.personalToken })

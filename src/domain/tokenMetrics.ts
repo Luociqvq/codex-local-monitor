@@ -6,8 +6,11 @@ export interface TokenOrbMetrics {
 }
 
 export interface AdminMonitorMetrics {
+  source?: 'sub2api' | 'cliproxyapi'
   todayTotalTokens: number | null
   todayTotalCost: number | null
+  totalRequests?: number | null
+  failedRequests?: number | null
   totalTokens?: number | null
   totalActualCost?: number | null
   totalAccountCost?: number | null

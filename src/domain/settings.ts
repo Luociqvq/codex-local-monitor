@@ -1,6 +1,10 @@
+export type DataSource = 'sub2api' | 'cliproxyapi'
+
 export interface AppSettings {
+  dataSource: DataSource
   sub2apiBaseUrl: string
   adminApiKey: string
+  cliProxyManagementKey: string
   personalFloatingEnabled: boolean
   personalToken: string
   poolGroupName: string
@@ -11,8 +15,10 @@ export interface AppSettings {
 }
 
 export const defaultSettings: AppSettings = {
+  dataSource: 'sub2api',
   sub2apiBaseUrl: '',
   adminApiKey: '',
+  cliProxyManagementKey: '',
   personalFloatingEnabled: false,
   personalToken: '',
   poolGroupName: '',
@@ -42,7 +48,7 @@ export function saveSettings(settings: AppSettings): AppSettings {
 }
 
 export function hasRequiredSub2apiSettings(settings: AppSettings): boolean {
-  return settings.sub2apiBaseUrl.trim() !== '' && (hasAdminSettings(settings) || hasPersonalSettings(settings))
+  return settings.dataSource === 'sub2api' && settings.sub2apiBaseUrl.trim() !== '' && (hasAdminSettings(settings) || hasPersonalSettings(settings))
 }
 
 export function hasAdminSettings(settings: AppSettings): boolean {
@@ -53,15 +59,22 @@ export function hasPersonalSettings(settings: AppSettings): boolean {
   return settings.sub2apiBaseUrl.trim() !== '' && settings.personalToken.trim() !== ''
 }
 
+export function hasCliProxySettings(settings: AppSettings): boolean {
+  return settings.dataSource === 'cliproxyapi' && settings.sub2apiBaseUrl.trim() !== '' && settings.cliProxyManagementKey.trim() !== ''
+}
+
 function sanitizeSettings(settings: Partial<AppSettings>): AppSettings {
   const legacySettings = settings as Partial<AppSettings> & { poolGroupId?: unknown; poolGroupNames?: unknown }
   const refreshSeconds = Number(settings.refreshSeconds)
   const poolGroupNames = normalizePoolGroupNames(
     Array.isArray(legacySettings.poolGroupNames) ? legacySettings.poolGroupNames : settings.poolGroupName ?? legacySettings.poolGroupId
   )
+  const dataSource = settings.dataSource === 'cliproxyapi' ? 'cliproxyapi' : 'sub2api'
   return {
+    dataSource,
     sub2apiBaseUrl: String(settings.sub2apiBaseUrl ?? defaultSettings.sub2apiBaseUrl),
     adminApiKey: String(settings.adminApiKey ?? defaultSettings.adminApiKey),
+    cliProxyManagementKey: String(settings.cliProxyManagementKey ?? defaultSettings.cliProxyManagementKey),
     personalFloatingEnabled: settings.personalToken?.trim() !== '' || settings.personalFloatingEnabled === true,
     personalToken: String(settings.personalToken ?? defaultSettings.personalToken),
     poolGroupName: poolGroupNames[0] ?? defaultSettings.poolGroupName,

@@ -4,6 +4,7 @@ import App from './App.vue'
 import { settingsStorageKey, type AppSettings } from '@/domain/settings'
 import type { AdminMonitorMetrics, TokenOrbMetrics } from '@/domain/tokenMetrics'
 import { fetchAdminMonitorMetrics, fetchSub2apiMetrics } from '@/domain/sub2apiClient'
+import { fetchCliProxyApiMetrics } from '@/domain/cliProxyApiClient'
 
 enableAutoUnmount(afterEach)
 
@@ -84,6 +85,10 @@ vi.mock('@/domain/sub2apiClient', () => ({
   fetchSub2apiMetrics: vi.fn()
 }))
 
+vi.mock('@/domain/cliProxyApiClient', () => ({
+  fetchCliProxyApiMetrics: vi.fn()
+}))
+
 vi.mock('@tauri-apps/api/core', () => ({ invoke: tauri.invoke }))
 vi.mock('@tauri-apps/api/app', () => ({ getVersion: tauri.getVersion }))
 vi.mock('@tauri-apps/api/event', () => ({ emit: tauri.emit, listen: tauri.listen }))
@@ -92,8 +97,10 @@ vi.mock('@tauri-apps/plugin-updater', () => ({ check: tauri.check }))
 vi.mock('@tauri-apps/plugin-process', () => ({ relaunch: tauri.relaunch }))
 
 const adminSettings: AppSettings = {
+  dataSource: 'sub2api',
   sub2apiBaseUrl: 'https://subapi.example.test',
   adminApiKey: 'admin-key',
+  cliProxyManagementKey: '',
   personalFloatingEnabled: false,
   personalToken: '',
   poolGroupName: 'codex',
@@ -130,14 +137,15 @@ describe('Sub2API Pulse dashboard', () => {
     window.history.replaceState({}, '', '/?view=platform')
     vi.mocked(fetchAdminMonitorMetrics).mockResolvedValue(defaultAdminMetrics())
     vi.mocked(fetchSub2apiMetrics).mockResolvedValue(defaultPersonalMetrics())
+    vi.mocked(fetchCliProxyApiMetrics).mockResolvedValue(defaultAdminMetrics())
   })
 
   it('renders the setup form when no credentials are configured', async () => {
     const wrapper = mount(App)
     await flushPromises()
 
-    expect(wrapper.get('.onboarding .updated').text()).toContain('sub2api')
-    expect(wrapper.get('.onboarding .setup-intro').text()).toContain('orb')
+    expect(wrapper.get('.onboarding .updated').text()).toContain('数据源')
+    expect(wrapper.get('.onboarding .setup-intro').text()).toContain('CLIProxyAPI')
     expect(wrapper.get('button.primary-button--wide').text()).toContain('连接并开始监控')
     expect(fetchAdminMonitorMetrics).not.toHaveBeenCalled()
     expect(fetchSub2apiMetrics).not.toHaveBeenCalled()
@@ -197,6 +205,43 @@ describe('Sub2API Pulse dashboard', () => {
     expect(wrapper.get('.codex-section').classes()).toContain('active')
     expect(wrapper.get('.codex-section').text()).toContain('2')
     expect(wrapper.get('.codex-section').text()).toContain('1')
+  })
+
+  it('polls CLIProxyAPI management metrics and renders request/account labels', async () => {
+    const cliProxySettings: AppSettings = {
+      ...adminSettings,
+      dataSource: 'cliproxyapi',
+      adminApiKey: '',
+      cliProxyManagementKey: 'management-key'
+    }
+    setSettings(cliProxySettings)
+    vi.mocked(fetchCliProxyApiMetrics).mockResolvedValueOnce({
+      ...defaultAdminMetrics(),
+      source: 'cliproxyapi',
+      totalRequests: 1234,
+      failedRequests: 12,
+      poolAccounts: { active: 3, limited: 1, error: 1, total: 5 },
+      serverStatus: 'online',
+      serverLatencyMs: 42,
+      updatedAt: '2026-08-17T12:34:56.000Z'
+    })
+
+    const wrapper = mount(App)
+    await flushPromises()
+
+    expect(fetchCliProxyApiMetrics).toHaveBeenCalledWith({
+      baseUrl: cliProxySettings.sub2apiBaseUrl,
+      managementKey: cliProxySettings.cliProxyManagementKey
+    })
+    expect(fetchAdminMonitorMetrics).not.toHaveBeenCalled()
+    expect(wrapper.get('.quota-orb').text()).toContain('REQS')
+    await wrapper.get('.quota-orb').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('.card-title').text()).toContain('CLI PROXY API')
+    expect(wrapper.get('.hero-metric').text()).toContain('1.23K')
+    expect(wrapper.get('.metric-card--cost').text()).toContain('失败请求')
+    expect(wrapper.get('.metric-card--quota').text()).toContain('3 / 5')
+    expect(wrapper.get('.codex-section').text()).toContain('代理账户')
   })
 
   it('uses the personal endpoint when only a personal token is enabled', async () => {
@@ -260,9 +305,8 @@ describe('Sub2API Pulse dashboard', () => {
   it('validates and saves setup values', async () => {
     const wrapper = mount(App)
     await flushPromises()
-    const inputs = wrapper.findAll('input')
-    await inputs[0].setValue('https://subapi.example.test///')
-    await inputs[1].setValue('admin-key')
+    await wrapper.get('form.quick-setup input[type="url"]').setValue('https://subapi.example.test///')
+    await wrapper.get('form.quick-setup input[placeholder="管理员 API Key"]').setValue('admin-key')
     await wrapper.get('form.quick-setup').trigger('submit')
     await flushPromises()
 
