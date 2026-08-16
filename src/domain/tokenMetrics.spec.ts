@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  buildAdminApiKeyHeaders,
   buildSub2apiHeaders,
   calculatePoolRemainingPercent,
   countPoolAccounts,
@@ -25,6 +26,7 @@ import {
   parseTotalStandardCost,
   parseAverageDurationMs,
   parseActiveUsers,
+  parseServerTelemetry,
   parseTodayTokens,
   parseModelUserUsage,
   parseUserModelUsage,
@@ -62,6 +64,42 @@ describe('tokenMetrics', () => {
     expect(parseTotalStandardCost(payload)).toBe(1.5)
     expect(parseAverageDurationMs(payload)).toBe(16540)
     expect(parseActiveUsers(payload)).toBe(7)
+  })
+
+  it('parses dashboard uptime and documented Ops telemetry', () => {
+    expect(parseServerTelemetry(
+      { data: { uptime: 90061 } },
+      { data: { system_metrics: { cpu_usage_percent: 42.4, memory_usage_percent: 68.2 } } },
+      { data: { enabled: true, platform: { openai: { platform: 'openai', current_in_use: 2, waiting_in_queue: 1 } } } }
+    )).toEqual({
+      cpuPercent: 42.4,
+      memoryPercent: 68.2,
+      uptimeSeconds: 90061,
+      codexStatus: 'running',
+      activeCodexTasks: 2,
+      queuedCodexTasks: 1
+    })
+  })
+
+  it('keeps Codex status unknown when realtime Ops metrics are disabled or missing', () => {
+    expect(parseServerTelemetry(
+      { data: { uptime: 60, cpu_percent: 99 } },
+      { data: { server: { memory_percent: 99 } } },
+      { data: { enabled: false, platform: {} } }
+    )).toEqual({
+      cpuPercent: null,
+      memoryPercent: null,
+      uptimeSeconds: 60,
+      codexStatus: 'unknown',
+      activeCodexTasks: null,
+      queuedCodexTasks: null
+    })
+  })
+
+  it('marks an explicitly empty OpenAI scheduler as idle', () => {
+    expect(parseServerTelemetry(null, null, {
+      data: { enabled: true, platform: { 'openai-alias': { platform: 'openai', current_in_use: 0, waiting_in_queue: 0 } } }
+    }).codexStatus).toBe('idle')
   })
 
   it('parses latest first token from usage list', () => {
@@ -331,6 +369,19 @@ describe('tokenMetrics', () => {
     expect(buildSub2apiHeaders('Bearer xyz').Authorization).toBe('Bearer xyz')
   })
 
+  it('normalizes admin API key headers to a bare key and bearer authorization', () => {
+    expect(buildAdminApiKeyHeaders(' admin-key ')).toEqual({
+      'X-API-Key': 'admin-key',
+      Authorization: 'Bearer admin-key',
+      Accept: 'application/json'
+    })
+    expect(buildAdminApiKeyHeaders('  bEaReR   admin-key  ')).toEqual({
+      'X-API-Key': 'admin-key',
+      Authorization: 'Bearer admin-key',
+      Accept: 'application/json'
+    })
+  })
+
   it('adds a changing cache buster to realtime admin urls', () => {
     expect(buildRealtimeUrl('http://127.0.0.1/api/v1/admin/accounts?page=1', 1710000000000)).toBe(
       'http://127.0.0.1/api/v1/admin/accounts?page=1&_ts=1710000000000'
@@ -366,6 +417,34 @@ describe('tokenMetrics', () => {
     expect(accountUrl).toBeTruthy()
     expect(accountUrl).toContain('page_size=200')
     expect(accountUrl).not.toContain('lite=true')
+    expect(requestedUrls.some((url) => url.includes('/api/v1/admin/ops/dashboard/overview?time_range=5m'))).toBe(true)
+    expect(requestedUrls.some((url) => url.includes('/api/v1/admin/ops/concurrency?platform=openai'))).toBe(true)
+  })
+
+  it('keeps primary admin metrics when optional Ops endpoints are unavailable', async () => {
+    Reflect.deleteProperty(window, '__TAURI_INTERNALS__')
+    vi.stubGlobal('fetch', vi.fn(async (url: RequestInfo | URL) => {
+      const pathname = new URL(String(url)).pathname
+      if (pathname.includes('/api/v1/admin/ops/')) {
+        return new Response(JSON.stringify({ message: 'monitoring disabled' }), { status: 503 })
+      }
+      const payload = pathname.endsWith('/api/v1/admin/dashboard/stats')
+        ? { data: { today_tokens: 1234, today_actual_cost: 1.25, uptime: 3600 } }
+        : { data: [] }
+      return new Response(JSON.stringify(payload), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }))
+
+    const metrics = await fetchAdminMonitorMetrics({
+      baseUrl: 'http://127.0.0.1:8081',
+      apiKey: 'admin-key',
+      lightweight: true
+    })
+
+    expect(metrics.todayTotalTokens).toBe(1234)
+    expect(metrics.todayTotalCost).toBe(1.25)
+    expect(metrics.serverUptimeSeconds).toBe(3600)
+    expect(metrics.serverCpuPercent).toBeNull()
+    expect(metrics.codexStatus).toBe('unknown')
   })
 
   it('loads batch today stats and merges them into admin account details', async () => {
@@ -423,6 +502,31 @@ describe('tokenMetrics', () => {
       baseUrl: 'http://127.0.0.1:8081',
       token: 'expired-jwt'
     })).rejects.toThrow('认证失败，Token 错误或已失效：token invalid or expired')
+  })
+
+  it('returns personal today cost from dashboard stats', async () => {
+    Reflect.deleteProperty(window, '__TAURI_INTERNALS__')
+    vi.stubGlobal('fetch', vi.fn(async (url: RequestInfo | URL) => {
+      const pathname = new URL(String(url)).pathname
+      const payload = pathname.endsWith('/api/v1/usage/dashboard/stats')
+        ? { data: { today_tokens: 12_345, today_actual_cost: 1.2345 } }
+        : { data: { items: [{ first_token_ms: 1200 }] } }
+      return new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }))
+
+    const metrics = await fetchSub2apiMetrics({
+      baseUrl: 'http://127.0.0.1:8081',
+      token: 'personal-token'
+    })
+
+    expect(metrics).toMatchObject({
+      todayTokens: 12_345,
+      todayCost: 1.2345,
+      firstTokenMs: 1200
+    })
   })
 
   it('parses user token ranking for admin monitor list', () => {

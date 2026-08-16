@@ -1,187 +1,145 @@
-# Token Orb
+# Sub2API Pulse
 
-Token Orb 是一个桌面悬浮监控球，用来查看 sub2api 的 Token 用量和管理员监控信息。
+[![Release](https://img.shields.io/github/v/release/Luociqvq/sub2api-pulse?display_name=tag)](https://github.com/Luociqvq/sub2api-pulse/releases)
+[![Build](https://github.com/Luociqvq/sub2api-pulse/actions/workflows/release.yml/badge.svg)](https://github.com/Luociqvq/sub2api-pulse/actions/workflows/release.yml)
+[![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white)](https://v2.tauri.app/)
+
+Sub2API Pulse 是一个面向 [sub2api](https://github.com/Wei-Shaw/sub2api) 的轻量桌面监控器。它以紧凑悬浮岛常驻桌面，集中展示 Token 消耗、实际费用、账号池状态、服务器健康度和 OpenAI/Codex 并发情况。
+
+数据由客户端直接从你配置的 sub2api 实例读取，不经过中转服务。
 
 ## 界面预览
 
-以下截图使用模拟数据生成，仅用于展示插件界面效果。
+> 下列预览使用模拟数据，不包含真实服务器地址或凭据。
 
-### 平台监控面板
+### 平台监控
 
-![平台监控面板模拟截图](docs/images/platform-monitor-demo.svg)
+![Sub2API Pulse 平台监控面板](docs/images/platform-monitor-demo.svg)
 
-### 个人悬浮球
+### 个人用量
 
-![个人悬浮球模拟截图](docs/images/personal-orb-demo.svg)
+![Sub2API Pulse 个人用量悬浮岛](docs/images/personal-orb-demo.svg)
 
-### 设置窗口
+### 连接设置
 
-![设置窗口模拟截图](docs/images/settings-demo.svg)
+![Sub2API Pulse 设置界面](docs/images/settings-demo.svg)
 
-### 更新窗口
+### 应用更新
 
-![更新窗口模拟截图](docs/images/updater-demo.svg)
+![Sub2API Pulse 更新界面](docs/images/updater-demo.svg)
 
-## 第一版能力
+## 功能
 
-- 悬浮球显示个人数据：今日 Token、最新一条使用记录的首 Token 耗时。
-- 配置管理员 API Key 后，显示系统监控列表：
-  - 今日总 Token。
-  - 5小时号池剩余量、最近刷新时间和 hover 刷新时间列表。
-  - 今日用量榜：用户名/邮箱和 Token 数。
-  - 号池账号数量：正常 / 限流中 / 错误 / 总数量。
-  - 号池容量：当前并发容量 / 总并发容量。
-- 管理员模式下仍可额外配置个人 Token，让悬浮球继续显示自己的个人数据。
-- 未配置管理员 API Key 时，应用退回普通用户模式，只显示个人悬浮球数据。
-- mac 优先交互：菜单栏图标常驻，左键显示/隐藏右上角监控面板，右键菜单打开设置。
-- 监控面板默认固定到屏幕右上角，透明无边框，适合长期悬浮查看。
-- 应用 Logo 位于 `public/logo.svg`，桌面图标位于 `src-tauri/icons/`。
+- **实时用量**：今日 Token、今日实际金额和最近请求延迟。
+- **账号池概览**：可用账号、账号总量、限流/异常数量和平均配额余量。
+- **服务器状态**：CPU、内存、接口延迟和运行时长。
+- **Codex 调度**：OpenAI 平台请求的运行数与排队数。
+- **双凭据模式**：支持管理员 API Key，也支持只配置个人 Token。
+- **桌面悬浮交互**：自动收起、固定展开、保持置顶和托盘快捷菜单。
+- **后台节流**：窗口隐藏时暂停轮询，恢复显示后立即刷新。
+- **自动更新**：通过 GitHub Releases 检查并安装新版本。
 
-## 数据来源
+> Codex 调度数据来自 sub2api Ops 并发接口，不是本机 Codex Desktop 的任务列表。未启用 Ops 监控时，该区域会显示“未提供”，不影响其他指标。
 
-个人数据使用普通用户接口：
+## 安装
 
-- `/api/v1/usage/dashboard/stats` 读取 `today_tokens`。
-- `/api/v1/usage?page=1&page_size=1&sort=created_at&order=desc` 读取最新记录的 `first_token_ms`。
+在 [Releases](https://github.com/Luociqvq/sub2api-pulse/releases) 页面下载与你的平台对应的安装包。
 
-管理员数据使用管理员接口：
+Windows 推荐使用：
 
-- `/api/v1/admin/dashboard/stats` 读取系统今日 Token。
-- `/api/v1/admin/dashboard/users-ranking` 读取今日用户用量榜。
-- `/api/v1/admin/groups/all` 读取 active 分组列表，用配置的分组名称完全匹配到分组 ID。
-- `/api/v1/admin/accounts` 按匹配到的分组 ID 读取账号列表，并按 `extra.codex_5h_used_percent` 计算 5 小时号池剩余量。
-- `/api/v1/admin/groups/capacity-summary` 按匹配到的分组 ID 读取 `concurrency_used` 和 `concurrency_max`。
+- `Sub2API Pulse_VERSION_x64-setup.exe`：NSIS 安装程序。
+- `Sub2API Pulse_VERSION_x64_en-US.msi`：MSI 安装包。
 
-5小时号池剩余量算法：配置分组名称后，先用分组名称完全相等匹配 active 分组 ID，再统计该分组下状态为 `active`、`rate_limited`、`overloaded` 一类可恢复账号，按 `100 - codex_5h_used_percent` 求平均值。错误或停用账号不参与计算。如果 5h 窗口已经过期，则该账号按已用 0%、剩余 100% 计算；界面同时显示这批参与计算账号里最近将要刷新的那个 5h 时间。鼠标移动到“后刷新”文字上，会按刷新时间从小到大展示正常账号和限流中账号的刷新时间列表。
+macOS 构建由发布工作流生成。首次打开未签名的本地构建时，系统可能要求你在“隐私与安全性”中确认。
 
-账号数量算法：按当前号池分组统计总账号数量；分子拆分为正常、限流中、错误三类。暂停账号只计入总数量，不计入正常、限流中或错误。
+## 配置
 
-## 配置说明
+首次启动时填写以下信息：
 
-右键点击菜单栏 Token Orb 图标，选择“设置”，填写：
+| 配置项 | 必填 | 说明 |
+| --- | --- | --- |
+| 服务器地址 | 是 | sub2api 服务根地址，例如 `http://127.0.0.1:8081` |
+| 管理员 API Key | 二选一 | 展示平台、账号池、服务器和 Ops 指标 |
+| 个人 Token | 二选一 | 展示当前用户的 Token 与费用数据 |
+| 账号池分组 | 否 | 与 sub2api 中的 active 分组名称完全一致；留空统计全部账号 |
+| 刷新间隔 | 否 | 支持 10-300 秒，默认 30 秒 |
 
-- `sub2api Base URL`：例如 `http://172.16.5.12:8081`。
-- `管理员 API Key`：用于读取系统监控数据。配置后启用管理员模式。
-- `个人 JWT / Bearer Token`：可选，用于悬浮球显示个人今日 Token 和首 Token。
-- `号池分组名称`：可选，填写 sub2api 后台里看到的完整分组名称。名称必须完全一致，不做模糊匹配；留空时统计全部可恢复账号。
-- `刷新间隔`：默认 30 秒，范围 10 到 300 秒。
+管理员 API Key 与个人 Token 可以同时配置。保存前可使用“测试连接”验证地址和凭据。
 
-配置保存在本机浏览器存储中，不会上传到其他服务。
+## 数据接口
 
-## 菜单栏操作
+Sub2API Pulse 根据凭据和服务能力调用以下接口：
 
-- 左键点击菜单栏图标：显示或隐藏监控面板。
-- 右键点击菜单栏图标：打开菜单，可进入设置或退出应用。
-- “显示监控面板”：把监控面板固定到当前屏幕右上角。
-- “设置”：打开独立设置窗口。
+```text
+/api/v1/usage/dashboard/stats
+/api/v1/usage?page=1&page_size=1&sort=created_at&order=desc
+/api/v1/admin/dashboard/stats
+/api/v1/admin/groups/all
+/api/v1/admin/accounts
+/api/v1/admin/groups/capacity-summary
+/api/v1/admin/ops/dashboard/overview?time_range=5m
+/api/v1/admin/ops/concurrency?platform=openai
+```
 
-## 本地运行
+Ops 接口是可选能力，请求超时或服务端未启用时不会阻断主面板刷新。
 
-安装依赖：
+## 隐私与安全
+
+- 服务器地址与凭据保存在本机 WebView 存储中。
+- 凭据只发送到你填写的 sub2api 服务地址。
+- 项目不内置分析、遥测或第三方数据中转。
+- 公开仓库不包含作者或使用者的服务器地址、API Key、Token 等运行配置。
+
+建议为外网部署启用 HTTPS，并定期轮换管理员 API Key 与个人 Token。
+
+## 本地开发
+
+环境要求：
+
+- Node.js 20+
+- Rust stable
+- Tauri 2 对应的[系统依赖](https://v2.tauri.app/start/prerequisites/)
 
 ```bash
+git clone https://github.com/Luociqvq/sub2api-pulse.git
+cd sub2api-pulse
 npm install
-```
-
-运行 Web 调试：
-
-```bash
-npm run dev
-```
-
-运行桌面应用：
-
-```bash
 npm run desktop
 ```
 
-构建前端：
+常用命令：
 
 ```bash
-npm run build
+npm run dev       # 启动前端开发服务器
+npm test          # 运行前端与发布脚本测试
+npm run build     # 类型检查并构建前端
+npm run desktop   # 启动 Tauri 桌面应用
 ```
 
-运行测试：
+构建 Windows 安装包：
 
 ```bash
-npm test
+npm run tauri build -- --config src-tauri/tauri.local-build.conf.json
 ```
 
-## GitHub Release 自动打包
+本地覆盖配置会关闭 updater 产物生成，适合验证安装包。正式发布使用默认 Tauri 配置。
 
-项目内置 GitHub Actions：`.github/workflows/release.yml`。
+## 发布
 
-发版时只需要手动修改一个地方：`package.json`。
-
-需要更新：
-
-- `version`：应用版本号，不带 `v` 前缀，例如 `0.2.3`。
-- `release.notes`：GitHub Release 中用户看到的更新记录。
-
-修改后先同步 Tauri / Rust / npm 版本文件：
+版本号和更新说明以 `package.json` 为单一来源：
 
 ```bash
 npm run release:sync
-```
-
-提交所有同步结果后，执行发布：
-
-```bash
+npm test
+npm run build
 npm run release:tag
+git push origin main --follow-tags
 ```
 
-`release:tag` 会自动从 `package.json.version` 创建 `v*` tag，并使用
-`package.json.release.notes` 作为 GitHub Release 更新记录。
+推送 `v*` 标签后，GitHub Actions 会构建 Windows 与 macOS 安装包并创建 Release。自动更新签名需要在仓库 Secrets 中配置 `TAURI_SIGNING_PRIVATE_KEY` 和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。
 
-脚本会自动检查：
+## 技术栈
 
-- 当前分支必须是 `main`。
-- 工作区必须没有未提交改动。
-- 本地 tag 必须等于 `v` + `package.json.version`。
-- 本地和 GitHub 远端不能已存在同名 tag。
-- 会先推送 `main`，再创建 annotated tag 并推送到 GitHub。
-
-GitHub Actions 也会再次校验 tag 与 `package.json.version` 是否一致，并确认
-`package-lock.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`、
-`src-tauri/Cargo.lock` 已经同步提交，避免发布包内版本和 Release tag 不一致。
-
-Action 会构建：
-
-- macOS 通用安装包：`universal-apple-darwin`
-- Windows 安装包
-- Tauri updater 所需的更新包和 `latest.json`
-
-### 自动更新签名配置
-
-在线更新使用 Tauri updater，需要在 GitHub 仓库的 `Settings -> Secrets and variables -> Actions` 中配置：
-
-- `TAURI_SIGNING_PRIVATE_KEY`：Tauri updater 私钥内容。
-- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`：私钥密码。如果私钥没有密码，可以配置为空字符串或不配置。
-
-当前应用内置的 updater 公钥位于 `src-tauri/tauri.conf.json` 的 `plugins.updater.pubkey`。如果重新生成私钥，必须同步替换该公钥，否则客户端无法验证 Release 更新包。
-
-生成密钥命令：
-
-```bash
-npm run tauri -- signer generate --ci -w /tmp/token-orb-updater.key
-```
-
-生成后：
-
-- `/tmp/token-orb-updater.key` 内容保存到 GitHub Secret `TAURI_SIGNING_PRIVATE_KEY`。
-- `/tmp/token-orb-updater.key.pub` 内容写入 `src-tauri/tauri.conf.json`。
-
-### 检查更新
-
-右键菜单选择“检查更新”，会打开更新窗口：
-
-- 展示当前版本。
-- 如有新版，展示新版版本号和 Release 更新内容。
-- 点击“立即更新”会下载并安装更新。
-- 安装完成后点击“重启完成更新”。
-
-## 当前注意事项
-
-- 管理员 API Key 的实际认证头同时发送 `X-API-Key` 和 `Authorization: Bearer ...`，用于兼容不同部署方式。
-- 如果 sub2api 后端没有在账号列表返回 `extra.codex_5h_used_percent`，5小时号池剩余量会显示 `--`。
-- Tauri 桌面编译依赖 Rust；当前机器 Rust 版本是 `1.87.0`，项目已尽量锁定兼容依赖版本。
+- Vue 3 + TypeScript + Vite
+- Tauri 2 + Rust
+- Vitest

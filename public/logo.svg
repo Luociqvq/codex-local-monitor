@@ -1,17 +1,25 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Token Orb">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Sub2API Pulse">
   <defs>
-    <linearGradient id="g" x1="52" x2="204" y1="32" y2="224" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#20E3B2"/>
-      <stop offset="1" stop-color="#3B82F6"/>
+    <linearGradient id="base" x1="30" y1="24" x2="226" y2="232" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F7FCFF"/>
+      <stop offset="1" stop-color="#DDF4EA"/>
     </linearGradient>
-    <linearGradient id="h" x1="78" x2="178" y1="62" y2="194" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#F8FAFC" stop-opacity="0.98"/>
-      <stop offset="1" stop-color="#BDEFFF" stop-opacity="0.84"/>
+    <linearGradient id="island" x1="52" y1="88" x2="204" y2="174" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1D4C68"/>
+      <stop offset="1" stop-color="#285A70"/>
+    </linearGradient>
+    <linearGradient id="token" x1="88" y1="112" x2="176" y2="157" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#43CDA0"/>
+      <stop offset="1" stop-color="#2A9ED0"/>
     </linearGradient>
   </defs>
-  <rect width="256" height="256" rx="58" fill="#08111F"/>
-  <path d="M128 28 212 76v104l-84 48-84-48V76l84-48Z" fill="none" stroke="url(#g)" stroke-width="20" stroke-linejoin="round"/>
-  <path d="M81 94 128 67l47 27v31l-47-27-47 27V94Z" fill="url(#h)" opacity="0.96"/>
-  <path d="M81 162v-31l47 27 47-27v31l-47 27-47-27Z" fill="url(#g)"/>
-  <circle cx="128" cy="128" r="17" fill="#20E3B2"/>
+  <rect x="10" y="10" width="236" height="236" rx="70" fill="url(#base)" stroke="#70C3CF" stroke-width="8"/>
+  <path d="M48 129c0-31 25-56 56-56h52c31 0 56 25 56 56s-25 56-56 56h-52c-31 0-56-25-56-56Z" fill="#FFFFFF" fill-opacity=".78" stroke="#FFFFFF" stroke-width="6"/>
+  <path d="M64 129c0-22 18-40 40-40h48c22 0 40 18 40 40s-18 40-40 40h-48c-22 0-40-18-40-40Z" fill="url(#island)"/>
+  <circle cx="99" cy="129" r="16" fill="#F4C95D"/>
+  <circle cx="99" cy="129" r="7" fill="#FFF8DB"/>
+  <rect x="127" y="111" width="39" height="10" rx="5" fill="#E9F8F3"/>
+  <rect x="127" y="130" width="27" height="10" rx="5" fill="url(#token)"/>
+  <circle cx="184" cy="70" r="15" fill="#FFFFFF" fill-opacity=".86" stroke="#FFFFFF" stroke-width="4"/>
+  <path d="m184 58 3.3 8.7L196 70l-8.7 3.3L184 82l-3.3-8.7L172 70l8.7-3.3Z" fill="#F0B94B"/>
 </svg>

@@ -11,6 +11,7 @@ import {
   normalizeBaseUrl,
   parseGroups,
   parseActiveUsers,
+  parseServerTelemetry,
   parseAverageDurationMs,
   parseLatestFirstTokenMs,
   parseTodayActualCost,
@@ -37,6 +38,10 @@ import {
 type TauriInvoke = <T>(command: string, args?: Record<string, unknown>) => Promise<T>
 type HttpMethod = 'GET' | 'POST'
 
+const requestTimeoutMs = 30_000
+const optionalOpsTimeoutMs = 5_000
+let tauriInvokePromise: Promise<TauriInvoke | null> | null = null
+
 export interface Sub2apiConfig {
   baseUrl: string
   token: string
@@ -47,6 +52,8 @@ export interface AdminMonitorConfig {
   apiKey: string
   poolGroupName?: string
   poolGroupNames?: string[]
+  /** Skip rankings and per-account usage calls for a low-overhead widget poll. */
+  lightweight?: boolean
 }
 
 export async function fetchSub2apiMetrics(config: Sub2apiConfig): Promise<TokenOrbMetrics> {
@@ -60,6 +67,7 @@ export async function fetchSub2apiMetrics(config: Sub2apiConfig): Promise<TokenO
 
   return {
     todayTokens: parseTodayTokens(statsPayload),
+    todayCost: parseTodayActualCost(statsPayload),
     firstTokenMs: parseLatestFirstTokenMs(usagePayload),
     updatedAt: new Date().toISOString()
   }
@@ -69,14 +77,24 @@ export async function fetchAdminMonitorMetrics(config: AdminMonitorConfig): Prom
   const baseUrl = normalizeBaseUrl(config.baseUrl)
   const headers = buildAdminApiKeyHeaders(config.apiKey)
   const realtimeHeaders = buildRealtimeHeaders(headers)
+  const startedAt = Date.now()
   const today = formatLocalDate(new Date())
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai'
   const todayQuery = `start_date=${today}&end_date=${today}&timezone=${encodeURIComponent(timezone)}`
   const groupNames = normalizePoolGroupNames(config.poolGroupNames ?? config.poolGroupName)
+  const lightweight = config.lightweight === true
+  const refreshAt = Date.now()
+  const opsOverviewRequest = requestOptionalJson(
+    buildRealtimeUrl(`${baseUrl}/api/v1/admin/ops/dashboard/overview?time_range=5m`, refreshAt),
+    realtimeHeaders
+  )
+  const opsConcurrencyRequest = requestOptionalJson(
+    buildRealtimeUrl(`${baseUrl}/api/v1/admin/ops/concurrency?platform=openai`, refreshAt),
+    realtimeHeaders
+  )
   const groupsPayload = groupNames.length > 0 ? await requestJson(`${baseUrl}/api/v1/admin/groups/all`, headers) : null
   const poolGroupIds = groupNames.length > 0 ? findExactGroupIdsByNames(parseGroups(groupsPayload), groupNames) : []
   const groupMatched = groupNames.length === 0 || poolGroupIds.length > 0
-  const refreshAt = Date.now()
   const accountsRequests =
     poolGroupIds.length > 0
       ? poolGroupIds.map((groupId) =>
@@ -90,24 +108,31 @@ export async function fetchAdminMonitorMetrics(config: AdminMonitorConfig): Prom
         )
       : [requestJson(buildRealtimeUrl(`${baseUrl}/api/v1/admin/accounts?page=1&page_size=200`, refreshAt), realtimeHeaders)]
 
-  const [statsPayload, rankingPayload, usersPayload, accountsPayloads, capacityPayload] = await Promise.all([
+  const [statsPayload, rankingPayload, usersPayload, accountsPayloads, capacityPayload, opsOverviewPayload, opsConcurrencyPayload] = await Promise.all([
     requestJson(buildRealtimeUrl(`${baseUrl}/api/v1/admin/dashboard/stats?timezone=${encodeURIComponent(timezone)}`, refreshAt), realtimeHeaders),
-    requestJson(buildRealtimeUrl(`${baseUrl}/api/v1/admin/dashboard/users-ranking?${todayQuery}&limit=10`, refreshAt), realtimeHeaders),
-    requestJson(`${baseUrl}/api/v1/admin/users?page=1&page_size=200`, headers),
+    lightweight
+      ? Promise.resolve(null)
+      : requestJson(buildRealtimeUrl(`${baseUrl}/api/v1/admin/dashboard/users-ranking?${todayQuery}&limit=10`, refreshAt), realtimeHeaders),
+    lightweight ? Promise.resolve(null) : requestJson(`${baseUrl}/api/v1/admin/users?page=1&page_size=200`, headers),
     Promise.all(accountsRequests),
-    requestJson(buildRealtimeUrl(`${baseUrl}/api/v1/admin/groups/capacity-summary?timezone=${encodeURIComponent(timezone)}`, refreshAt), realtimeHeaders)
+    requestJson(buildRealtimeUrl(`${baseUrl}/api/v1/admin/groups/capacity-summary?timezone=${encodeURIComponent(timezone)}`, refreshAt), realtimeHeaders),
+    opsOverviewRequest,
+    opsConcurrencyRequest
   ])
 
   const accountItems = groupMatched ? dedupeAccounts(accountsPayloads.flatMap((payload) => readItems(payload))) : []
   const selectedGroupIds = poolGroupIds.length > 0 ? poolGroupIds : null
   const now = new Date()
-  const [todayStatsByAccountId, sevenDayCostByAccountId] = groupMatched
+  const [todayStatsByAccountId, sevenDayCostByAccountId] = groupMatched && !lightweight
     ? await Promise.all([
         fetchAccountTodayStats(baseUrl, headers, accountItems, refreshAt),
         fetchAccountSevenDayCosts(baseUrl, headers, accountItems, refreshAt)
       ])
     : [{}, {}]
   const userIdentities = parseUsers(usersPayload)
+
+  const telemetry = parseServerTelemetry(statsPayload, opsOverviewPayload, opsConcurrencyPayload)
+  const requestLatencyMs = Math.max(0, Date.now() - startedAt)
 
   return {
     todayTotalTokens: parseTodayTokens(statsPayload),
@@ -131,6 +156,14 @@ export async function fetchAdminMonitorMetrics(config: AdminMonitorConfig): Prom
       : [],
     userRanking: parseUserRanking(rankingPayload, userIdentities),
     userIdentities,
+    serverStatus: 'online',
+    serverLatencyMs: requestLatencyMs,
+    serverCpuPercent: telemetry.cpuPercent,
+    serverMemoryPercent: telemetry.memoryPercent,
+    serverUptimeSeconds: telemetry.uptimeSeconds,
+    codexStatus: telemetry.codexStatus,
+    activeCodexTasks: telemetry.activeCodexTasks,
+    queuedCodexTasks: telemetry.queuedCodexTasks,
     updatedAt: new Date().toISOString()
   }
 }
@@ -323,17 +356,21 @@ async function requestJson(
   url: string,
   headers: Record<string, string>,
   method: HttpMethod = 'GET',
-  body?: unknown
+  body?: unknown,
+  timeoutMs = requestTimeoutMs
 ): Promise<unknown> {
   const invoke = await loadTauriInvoke()
   if (invoke) {
-    return invoke('sub2api_request', { request: { url, headers, method, body } })
+    return invoke('sub2api_request', { request: { url, headers, method, body, timeoutMs } })
   }
 
   const response = await fetch(url, {
     method,
     headers,
-    body: method === 'GET' || body === undefined ? undefined : JSON.stringify(body)
+    body: method === 'GET' || body === undefined ? undefined : JSON.stringify(body),
+    signal: typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal
+      ? AbortSignal.timeout(timeoutMs)
+      : undefined
   })
   if (!response.ok) {
     throw new Error(await formatSub2apiHttpError(response))
@@ -391,9 +428,16 @@ function buildRealtimeHeaders(headers: Record<string, string>): Record<string, s
 
 async function loadTauriInvoke(): Promise<TauriInvoke | null> {
   if (!('__TAURI_INTERNALS__' in window)) return null
+  if (tauriInvokePromise) return tauriInvokePromise
+  tauriInvokePromise = import('@tauri-apps/api/core')
+    .then((api) => api.invoke as TauriInvoke)
+    .catch(() => null)
+  return tauriInvokePromise
+}
+
+async function requestOptionalJson(url: string, headers: Record<string, string>): Promise<unknown | null> {
   try {
-    const api = await import('@tauri-apps/api/core')
-    return api.invoke as TauriInvoke
+    return await requestJson(url, headers, 'GET', undefined, optionalOpsTimeoutMs)
   } catch {
     return null
   }

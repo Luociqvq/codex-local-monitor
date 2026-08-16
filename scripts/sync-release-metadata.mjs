@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -23,7 +22,7 @@ export function readReleaseMetadata(rootDir) {
   return {
     version,
     tag: `v${version}`,
-    releaseName: `Token Orb v${version}`,
+    releaseName: `Sub2API Pulse v${version}`,
     releaseBody: notes,
   }
 }
@@ -31,6 +30,7 @@ export function readReleaseMetadata(rootDir) {
 export function syncReleaseMetadata(rootDir) {
   const metadata = readReleaseMetadata(rootDir)
   const { version } = metadata
+  const packageName = JSON.parse(readFileSync(path.join(rootDir, 'package.json'), 'utf8')).name
 
   updateJson(path.join(rootDir, 'package-lock.json'), (json) => {
     json.version = version
@@ -44,7 +44,7 @@ export function syncReleaseMetadata(rootDir) {
   })
 
   updatePackageVersionInToml(path.join(rootDir, 'src-tauri', 'Cargo.toml'), version)
-  updatePackageVersionInCargoLock(path.join(rootDir, 'src-tauri', 'Cargo.lock'), 'token-orb', version)
+  updatePackageVersionInCargoLock(path.join(rootDir, 'src-tauri', 'Cargo.lock'), packageName, version)
 
   return metadata
 }
@@ -186,10 +186,10 @@ function heredocOutput(name, value) {
 
 function uniqueDelimiter(value) {
   let index = 0
-  let delimiter = 'TOKEN_ORB_RELEASE_BODY'
+  let delimiter = 'SUB2API_PULSE_RELEASE_BODY'
   while (value.includes(delimiter)) {
     index += 1
-    delimiter = `TOKEN_ORB_RELEASE_BODY_${index}`
+    delimiter = `SUB2API_PULSE_RELEASE_BODY_${index}`
   }
   return delimiter
 }
@@ -206,7 +206,7 @@ function main() {
 }
 
 export function createFixture(files) {
-  const rootDir = mkdtempSync(path.join(tmpdir(), 'token-orb-release-'))
+  const rootDir = mkdtempSync(path.join(tmpdir(), 'sub2api-pulse-release-'))
   for (const [relativePath, content] of Object.entries(files)) {
     const filePath = path.join(rootDir, relativePath)
     writeFileSync(filePath, content)

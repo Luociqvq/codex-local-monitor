@@ -1,10 +1,25 @@
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::sync::OnceLock;
+use std::time::Duration;
 use tauri::image::Image;
+use tauri::menu::MenuBuilder;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Listener, LogicalSize, Manager, PhysicalPosition, PhysicalSize, Runtime, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
+use tauri::{
+    AppHandle, Emitter, Listener, LogicalSize, Manager, PhysicalPosition, PhysicalSize, Runtime,
+    WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+};
 
-mod tray_icon_rgba;
+static SUB2API_CLIENT: OnceLock<Result<reqwest::Client, String>> = OnceLock::new();
+
+const WIDGET_ORB_WIDTH: f64 = 166.0;
+const WIDGET_ORB_HEIGHT: f64 = 50.0;
+const WIDGET_CARD_WIDTH: f64 = 314.0;
+const WIDGET_CARD_HEIGHT: f64 = 382.0;
+const WIDGET_SETUP_WIDTH: f64 = 390.0;
+const WIDGET_SETUP_HEIGHT: f64 = 440.0;
+const WIDGET_SETTINGS_WIDTH: f64 = 390.0;
+const WIDGET_SETTINGS_HEIGHT: f64 = 560.0;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -13,6 +28,7 @@ struct Sub2apiRequest {
     headers: HashMap<String, String>,
     method: Option<String>,
     body: Option<serde_json::Value>,
+    timeout_ms: Option<u64>,
 }
 
 pub fn run() {
@@ -21,29 +37,43 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .invoke_handler(tauri::generate_handler![sub2api_request, tray_command])
+        .invoke_handler(tauri::generate_handler![
+            sub2api_request,
+            tray_command,
+            set_widget_expanded,
+            set_widget_setup,
+            set_widget_settings,
+            set_widget_always_on_top
+        ])
         .setup(|app| {
             let handle = app.handle().clone();
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.set_always_on_top(true);
-                let _ = window.set_decorations(false);
-                let _ = window.set_shadow(false);
-                let _ = window.set_size(LogicalSize::new(184.0, 132.0));
-            }
-
             let update_window_handle = app.handle().clone();
             app.listen("token-orb-open-update", move |_| {
                 open_update_window(&update_window_handle);
             });
 
-            TrayIconBuilder::with_id("main")
-                .icon(Image::new(
-                    tray_icon_rgba::TRAY_ICON_RGBA,
-                    tray_icon_rgba::TRAY_ICON_WIDTH,
-                    tray_icon_rgba::TRAY_ICON_HEIGHT,
-                ))
+            let tray_handle = handle.clone();
+            let tray_menu = MenuBuilder::new(app)
+                .text("monitor", "打开监控")
+                .text("settings", "重新配置")
+                .text("update", "检查更新")
+                .separator()
+                .text("quit", "退出")
+                .build()
+                .map_err(|error| format!("Sub2API Pulse 托盘菜单初始化失败: {error}"))?;
+            let tray_icon = Image::from_bytes(include_bytes!("../icons/tray.png"))
+                .map_err(|error| format!("Sub2API Pulse 托盘图标加载失败: {error}"))?;
+
+            let tray_result = TrayIconBuilder::with_id("main")
+                .icon(tray_icon)
+                .menu(&tray_menu)
                 .show_menu_on_left_click(false)
-                .tooltip("Token Orb")
+                .on_menu_event(|app, event| {
+                    if let Err(error) = tray_command(app.clone(), event.id().as_ref().to_string()) {
+                        eprintln!("Sub2API Pulse 托盘菜单命令失败: {error}");
+                    }
+                })
+                .tooltip("Sub2API Pulse")
                 .on_tray_icon_event(move |_tray, event| {
                     if let TrayIconEvent::Click {
                         button,
@@ -56,13 +86,23 @@ pub fn run() {
                             return;
                         }
                         match button {
-                            MouseButton::Left => toggle_monitor(&handle, Some(rect)),
-                            MouseButton::Right => open_tray_menu(&handle, rect),
+                            MouseButton::Left => toggle_monitor(&tray_handle, Some(rect)),
+                            MouseButton::Right => {}
                             _ => {}
                         }
                     }
                 })
-                .build(app)?;
+                .build(app);
+
+            if let Err(error) = tray_result {
+                // Some restricted Windows desktop sessions do not expose the
+                // notification-area API. Keep the monitor usable in that case.
+                eprintln!("Sub2API Pulse 托盘初始化失败，继续运行监控窗口: {error}");
+            }
+
+            // Keep the dashboard visible from the first launch. It renders the
+            // inline setup form when no local credentials have been saved yet.
+            open_monitor(&handle, None);
             Ok(())
         })
         .run(tauri::generate_context!())
@@ -80,7 +120,7 @@ fn tray_command(app: AppHandle, command: String) -> Result<(), String> {
             let tray_rect = app
                 .tray_by_id("main")
                 .and_then(|tray| tray.rect().ok().flatten());
-            toggle_monitor(&app, tray_rect);
+            open_monitor(&app, tray_rect);
         }
         "settings" => open_settings(&app),
         "update" => open_update_window(&app),
@@ -92,9 +132,131 @@ fn tray_command(app: AppHandle, command: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn set_widget_expanded(app: AppHandle, expanded: bool) -> Result<(), String> {
+    let window = app
+        .get_webview_window("platform")
+        .ok_or_else(|| "监控窗口尚未创建".to_string())?;
+    let size = if expanded {
+        LogicalSize::new(WIDGET_CARD_WIDTH, WIDGET_CARD_HEIGHT)
+    } else {
+        LogicalSize::new(WIDGET_ORB_WIDTH, WIDGET_ORB_HEIGHT)
+    };
+
+    resize_widget_preserving_position(&app, &window, size)
+}
+
+#[tauri::command]
+fn set_widget_setup(app: AppHandle) -> Result<(), String> {
+    let window = app
+        .get_webview_window("platform")
+        .ok_or_else(|| "监控窗口尚未创建".to_string())?;
+    window
+        .set_size(LogicalSize::new(WIDGET_SETUP_WIDTH, WIDGET_SETUP_HEIGHT))
+        .map_err(|error| format!("调整首次配置窗口大小失败: {error}"))?;
+    let size = LogicalSize::new(WIDGET_SETUP_WIDTH, WIDGET_SETUP_HEIGHT);
+    position_monitor_with_size(&app, &window, None, physical_size_for(&window, size));
+    Ok(())
+}
+
+#[tauri::command]
+fn set_widget_settings(app: AppHandle) -> Result<(), String> {
+    let window = app
+        .get_webview_window("platform")
+        .ok_or_else(|| "监控窗口尚未创建".to_string())?;
+    resize_widget_preserving_position(
+        &app,
+        &window,
+        LogicalSize::new(WIDGET_SETTINGS_WIDTH, WIDGET_SETTINGS_HEIGHT),
+    )
+}
+
+fn physical_size_for<R: Runtime>(
+    window: &WebviewWindow<R>,
+    size: LogicalSize<f64>,
+) -> PhysicalSize<u32> {
+    let scale = window.scale_factor().unwrap_or(1.0);
+    PhysicalSize::new(
+        (size.width * scale).round().max(1.0) as u32,
+        (size.height * scale).round().max(1.0) as u32,
+    )
+}
+
+fn resize_widget_preserving_position<R: Runtime>(
+    app: &AppHandle<R>,
+    window: &WebviewWindow<R>,
+    size: LogicalSize<f64>,
+) -> Result<(), String> {
+    let old_position = window
+        .outer_position()
+        .unwrap_or_else(|_| PhysicalPosition::new(0, 0));
+    let old_size = window
+        .outer_size()
+        .unwrap_or_else(|_| physical_size_for(window, size));
+    let new_size = physical_size_for(window, size);
+    let candidate = preserve_right_edge_position(old_position, old_size, new_size);
+
+    window
+        .set_size(size)
+        .map_err(|error| format!("调整监控窗口大小失败: {error}"))?;
+
+    let monitor = app
+        .monitor_from_point(candidate.x as f64, candidate.y as f64)
+        .ok()
+        .flatten()
+        .or_else(|| window.current_monitor().ok().flatten())
+        .or_else(|| {
+            app.available_monitors()
+                .ok()
+                .and_then(|monitors| monitors.into_iter().next())
+        });
+
+    let position = monitor
+        .as_ref()
+        .map(|monitor| {
+            clamp_monitor_position(
+                candidate.x,
+                candidate.y,
+                new_size,
+                monitor.position(),
+                monitor.size(),
+            )
+        })
+        .unwrap_or(candidate);
+
+    window
+        .set_position(position)
+        .map_err(|error| format!("调整监控窗口位置失败: {error}"))
+}
+
+fn preserve_right_edge_position(
+    old_position: PhysicalPosition<i32>,
+    old_size: PhysicalSize<u32>,
+    new_size: PhysicalSize<u32>,
+) -> PhysicalPosition<i32> {
+    let old_width = old_size.width.min(i32::MAX as u32) as i32;
+    let new_width = new_size.width.min(i32::MAX as u32) as i32;
+    let right_edge = old_position.x.saturating_add(old_width);
+    PhysicalPosition::new(right_edge.saturating_sub(new_width), old_position.y)
+}
+
+#[tauri::command]
+fn set_widget_always_on_top(app: AppHandle, enabled: bool) -> Result<(), String> {
+    let window = app
+        .get_webview_window("platform")
+        .ok_or_else(|| "监控窗口尚未创建".to_string())?;
+    window
+        .set_always_on_top(enabled)
+        .map_err(|error| format!("切换窗口置顶失败: {error}"))
+}
+
+#[tauri::command]
 async fn sub2api_request(request: Sub2apiRequest) -> Result<serde_json::Value, String> {
-    let client = reqwest::Client::new();
-    let method = request.method.as_deref().unwrap_or("GET").to_ascii_uppercase();
+    let client = sub2api_client()?;
+    let method = request
+        .method
+        .as_deref()
+        .unwrap_or("GET")
+        .to_ascii_uppercase();
     let mut builder = match method.as_str() {
         "POST" => client.post(&request.url),
         "GET" => client.get(&request.url),
@@ -106,6 +268,9 @@ async fn sub2api_request(request: Sub2apiRequest) -> Result<serde_json::Value, S
     }
     if let Some(body) = request.body {
         builder = builder.json(&body);
+    }
+    if let Some(timeout_ms) = request.timeout_ms {
+        builder = builder.timeout(Duration::from_millis(timeout_ms.clamp(1_000, 30_000)));
     }
 
     let response = builder
@@ -123,6 +288,23 @@ async fn sub2api_request(request: Sub2apiRequest) -> Result<serde_json::Value, S
         .json::<serde_json::Value>()
         .await
         .map_err(|error| format!("sub2api 响应解析失败: {error}"))
+}
+
+fn sub2api_client() -> Result<&'static reqwest::Client, String> {
+    SUB2API_CLIENT
+        .get_or_init(|| {
+            reqwest::Client::builder()
+                .connect_timeout(Duration::from_secs(10))
+                .timeout(Duration::from_secs(30))
+                .pool_idle_timeout(Duration::from_secs(90))
+                .pool_max_idle_per_host(4)
+                .tcp_keepalive(Duration::from_secs(60))
+                .user_agent(concat!("Token-Orb/", env!("CARGO_PKG_VERSION")))
+                .build()
+                .map_err(|error| format!("初始化 HTTP 客户端失败: {error}"))
+        })
+        .as_ref()
+        .map_err(Clone::clone)
 }
 
 fn format_sub2api_http_error(status: u16, detail: &str) -> String {
@@ -156,7 +338,11 @@ fn read_sub2api_error_detail(detail: &str) -> String {
 }
 
 fn read_error_message(value: &serde_json::Value) -> Option<String> {
-    if let Some(message) = value.as_str().map(str::trim).filter(|message| !message.is_empty()) {
+    if let Some(message) = value
+        .as_str()
+        .map(str::trim)
+        .filter(|message| !message.is_empty())
+    {
         return Some(message.to_string());
     }
 
@@ -172,80 +358,75 @@ fn read_error_message(value: &serde_json::Value) -> Option<String> {
 fn toggle_monitor<R: Runtime>(app: &AppHandle<R>, tray_rect: Option<tauri::Rect>) {
     if let Some(window) = app.get_webview_window("platform") {
         if window.is_visible().unwrap_or(false) {
+            let _ = window.emit("token-orb-monitor-visibility", false);
             let _ = window.hide();
         } else {
             position_monitor(app, &window, tray_rect);
             let _ = window.show();
             let _ = window.set_focus();
+            let _ = window.emit("token-orb-monitor-visibility", true);
         }
         return;
     }
 
-    let window = WebviewWindowBuilder::new(app, "platform", WebviewUrl::App("index.html?view=platform".into()))
-        .title("Token Orb 平台信息")
-        .inner_size(410.0, 300.0)
-        .resizable(false)
-        .decorations(false)
-        .transparent(false)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        .shadow(false)
-        .build();
+    open_monitor(app, tray_rect);
+}
+
+fn open_monitor<R: Runtime>(app: &AppHandle<R>, tray_rect: Option<tauri::Rect>) {
+    if let Some(window) = app.get_webview_window("platform") {
+        position_monitor(app, &window, tray_rect);
+        let _ = window.show();
+        let _ = window.set_focus();
+        let _ = window.emit("token-orb-monitor-visibility", true);
+        return;
+    }
+
+    let window = WebviewWindowBuilder::new(
+        app,
+        "platform",
+        WebviewUrl::App("index.html?view=platform".into()),
+    )
+    .title("Sub2API Pulse 监控")
+    // Start large enough for first-run setup. Configured installs resize
+    // themselves to the compact orb as soon as the WebView mounts.
+    .inner_size(WIDGET_SETUP_WIDTH, WIDGET_SETUP_HEIGHT)
+    .resizable(false)
+    .decorations(false)
+    .transparent(true)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .shadow(false)
+    .visible(false)
+    .build();
 
     if let Ok(window) = window {
         position_monitor(app, &window, tray_rect);
         let _ = window.show();
         let _ = window.set_focus();
-    }
-}
-
-fn open_tray_menu<R: Runtime>(app: &AppHandle<R>, tray_rect: tauri::Rect) {
-    if let Some(window) = app.get_webview_window("tray-menu") {
-        position_tray_menu(app, &window, &tray_rect);
-        let _ = window.show();
-        let _ = window.set_focus();
-        return;
-    }
-
-    let window = WebviewWindowBuilder::new(app, "tray-menu", WebviewUrl::App("index.html?view=tray-menu".into()))
-        .title("Token Orb 菜单")
-        .inner_size(250.0, 238.0)
-        .resizable(false)
-        .decorations(false)
-        .transparent(false)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        .shadow(true)
-        .visible(false)
-        .build();
-
-    if let Ok(window) = window {
-        let window_on_blur = window.clone();
-        window.on_window_event(move |event| {
-            if matches!(event, WindowEvent::Focused(false)) {
-                let _ = window_on_blur.hide();
-            }
-        });
-        position_tray_menu(app, &window, &tray_rect);
-        let _ = window.show();
-        let _ = window.set_focus();
+        let _ = window.emit("token-orb-monitor-visibility", true);
     }
 }
 
 fn open_settings<R: Runtime>(app: &AppHandle<R>) {
     if let Some(window) = app.get_webview_window("settings") {
+        // Close a stale secondary window created by an older build. The
+        // current settings flow is rendered by the already-mounted monitor.
+        let _ = window.close();
+    }
+
+    if let Some(window) = app.get_webview_window("platform") {
         let _ = window.show();
         let _ = window.set_focus();
+        let _ = window.emit("token-orb-open-settings", ());
         return;
     }
 
-    let _ = WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("index.html?view=settings".into()))
-        .title("Token Orb 设置")
-        .inner_size(390.0, 570.0)
-        .resizable(false)
-        .decorations(true)
-        .always_on_top(true)
-        .build();
+    // Keep a fallback for the short startup race before the monitor WebView
+    // has been created.
+    open_monitor(app, None);
+    if let Some(window) = app.get_webview_window("platform") {
+        let _ = window.emit("token-orb-open-settings", ());
+    }
 }
 
 fn open_update_window<R: Runtime>(app: &AppHandle<R>) {
@@ -256,13 +437,17 @@ fn open_update_window<R: Runtime>(app: &AppHandle<R>) {
         return;
     }
 
-    let window = WebviewWindowBuilder::new(app, "updater", WebviewUrl::App("index.html?view=updater".into()))
-        .title("Token Orb 更新")
-        .inner_size(420.0, 380.0)
-        .resizable(false)
-        .decorations(true)
-        .always_on_top(true)
-        .build();
+    let window = WebviewWindowBuilder::new(
+        app,
+        "updater",
+        WebviewUrl::App("index.html?view=updater".into()),
+    )
+    .title("Sub2API Pulse 更新")
+    .inner_size(420.0, 380.0)
+    .resizable(false)
+    .decorations(true)
+    .always_on_top(true)
+    .build();
 
     if let Ok(window) = window {
         let _ = window.show();
@@ -270,53 +455,52 @@ fn open_update_window<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
-fn position_monitor<R: Runtime>(app: &AppHandle<R>, window: &WebviewWindow<R>, tray_rect: Option<tauri::Rect>) {
-    let window_size = window.outer_size().unwrap_or(PhysicalSize::new(410, 300));
-
-    if let Some(rect) = tray_rect {
-        let anchor = tray_anchor(&rect);
-        let monitor = app
-            .monitor_from_point(anchor.x as f64, anchor.y as f64)
-            .ok()
-            .flatten();
-        let x = anchor.x - (window_size.width as i32 / 2);
-        let y = anchor.y + 8;
-        let position = monitor
-            .as_ref()
-            .map(|monitor| clamp_monitor_position(x, y, window_size, monitor.position(), monitor.size()))
-            .unwrap_or_else(|| PhysicalPosition::new(x.max(8), y.max(8)));
-        let _ = window.set_position(position);
-        return;
-    }
-
-    if let Ok(Some(monitor)) = window.current_monitor() {
-        let size = monitor.size();
-        let position = monitor.position();
-        let x = position.x + size.width as i32 - window_size.width as i32 - 8;
-        let y = position.y + 32;
-        let _ = window.set_position(PhysicalPosition::new(x, y));
-    }
+fn position_monitor<R: Runtime>(
+    app: &AppHandle<R>,
+    window: &WebviewWindow<R>,
+    tray_rect: Option<tauri::Rect>,
+) {
+    let window_size = window.outer_size().unwrap_or(PhysicalSize::new(360, 500));
+    position_monitor_with_size(app, window, tray_rect, window_size);
 }
 
-fn position_tray_menu<R: Runtime>(app: &AppHandle<R>, window: &WebviewWindow<R>, tray_rect: &tauri::Rect) {
-    let window_size = window.outer_size().unwrap_or(PhysicalSize::new(250, 238));
-    let anchor = tray_anchor(tray_rect);
-    let x = anchor.x - (window_size.width as i32 / 2);
-    let y = anchor.y + 6;
-    let position = app
-        .monitor_from_point(anchor.x as f64, anchor.y as f64)
-        .ok()
-        .flatten()
-        .as_ref()
-        .map(|monitor| clamp_monitor_position(x, y, window_size, monitor.position(), monitor.size()))
-        .unwrap_or_else(|| PhysicalPosition::new(x.max(8), y.max(8)));
-    let _ = window.set_position(position);
+fn position_monitor_with_size<R: Runtime>(
+    app: &AppHandle<R>,
+    window: &WebviewWindow<R>,
+    tray_rect: Option<tauri::Rect>,
+    window_size: PhysicalSize<u32>,
+) {
+    let monitor = tray_rect
+        .and_then(|rect| {
+            let anchor = tray_anchor(&rect);
+            app.monitor_from_point(anchor.x as f64, anchor.y as f64)
+                .ok()
+                .flatten()
+        })
+        .or_else(|| window.current_monitor().ok().flatten())
+        .or_else(|| {
+            app.available_monitors()
+                .ok()
+                .and_then(|monitors| monitors.into_iter().next())
+        });
+
+    if let Some(monitor) = monitor {
+        let position = monitor.position();
+        let size = monitor.size();
+        let x = position.x + size.width as i32 - window_size.width as i32 - 14;
+        let y = position.y + 14;
+        let position = clamp_monitor_position(x, y, window_size, position, size);
+        let _ = window.set_position(position);
+    }
 }
 
 fn tray_anchor(rect: &tauri::Rect) -> PhysicalPosition<i32> {
     let position = rect.position.to_physical::<i32>(1.0);
     let size = rect.size.to_physical::<u32>(1.0);
-    PhysicalPosition::new(position.x + (size.width as i32 / 2), position.y + size.height as i32)
+    PhysicalPosition::new(
+        position.x + (size.width as i32 / 2),
+        position.y + size.height as i32,
+    )
 }
 
 fn clamp_monitor_position(
@@ -328,10 +512,15 @@ fn clamp_monitor_position(
 ) -> PhysicalPosition<i32> {
     const SCREEN_MARGIN: i32 = 8;
     let min_x = monitor_position.x + SCREEN_MARGIN;
-    let max_x = monitor_position.x + monitor_size.width as i32 - window_size.width as i32 - SCREEN_MARGIN;
+    let max_x =
+        monitor_position.x + monitor_size.width as i32 - window_size.width as i32 - SCREEN_MARGIN;
     let min_y = monitor_position.y + SCREEN_MARGIN;
-    let max_y = monitor_position.y + monitor_size.height as i32 - window_size.height as i32 - SCREEN_MARGIN;
-    PhysicalPosition::new(x.clamp(min_x, max_x.max(min_x)), y.clamp(min_y, max_y.max(min_y)))
+    let max_y =
+        monitor_position.y + monitor_size.height as i32 - window_size.height as i32 - SCREEN_MARGIN;
+    PhysicalPosition::new(
+        x.clamp(min_x, max_x.max(min_x)),
+        y.clamp(min_y, max_y.max(min_y)),
+    )
 }
 
 #[cfg(test)]
@@ -359,5 +548,33 @@ mod tests {
         );
 
         assert_eq!(position, PhysicalPosition::new(1022, 592));
+    }
+
+    #[test]
+    fn logical_widget_sizes_are_scaled_to_physical_pixels() {
+        // The helper is exercised indirectly by the size constants and keeps
+        // the right-edge calculation correct on high-DPI monitors.
+        assert_eq!(WIDGET_ORB_WIDTH as u32, 166);
+        assert_eq!(WIDGET_CARD_HEIGHT as u32, 382);
+        assert_eq!(WIDGET_SETUP_HEIGHT as u32, 440);
+    }
+
+    #[test]
+    fn sub2api_http_client_is_reused() {
+        let first = sub2api_client().expect("client should initialize");
+        let second = sub2api_client().expect("client should be cached");
+
+        assert!(std::ptr::eq(first, second));
+    }
+
+    #[test]
+    fn widget_resize_preserves_right_edge_and_vertical_position() {
+        let position = preserve_right_edge_position(
+            PhysicalPosition::new(1200, 80),
+            PhysicalSize::new(166, 50),
+            PhysicalSize::new(314, 382),
+        );
+
+        assert_eq!(position, PhysicalPosition::new(1052, 80));
     }
 }

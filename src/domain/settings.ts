@@ -6,6 +6,8 @@ export interface AppSettings {
   poolGroupName: string
   poolGroupNames: string[]
   refreshSeconds: number
+  stayExpanded?: boolean
+  alwaysOnTop?: boolean
 }
 
 export const defaultSettings: AppSettings = {
@@ -15,7 +17,9 @@ export const defaultSettings: AppSettings = {
   personalToken: '',
   poolGroupName: '',
   poolGroupNames: [],
-  refreshSeconds: 30
+  refreshSeconds: 30,
+  stayExpanded: false,
+  alwaysOnTop: true
 }
 
 export const settingsStorageKey = 'token-orb-settings-v1'
@@ -46,7 +50,7 @@ export function hasAdminSettings(settings: AppSettings): boolean {
 }
 
 export function hasPersonalSettings(settings: AppSettings): boolean {
-  return settings.personalFloatingEnabled && settings.sub2apiBaseUrl.trim() !== '' && settings.personalToken.trim() !== ''
+  return settings.sub2apiBaseUrl.trim() !== '' && settings.personalToken.trim() !== ''
 }
 
 function sanitizeSettings(settings: Partial<AppSettings>): AppSettings {
@@ -58,11 +62,13 @@ function sanitizeSettings(settings: Partial<AppSettings>): AppSettings {
   return {
     sub2apiBaseUrl: String(settings.sub2apiBaseUrl ?? defaultSettings.sub2apiBaseUrl),
     adminApiKey: String(settings.adminApiKey ?? defaultSettings.adminApiKey),
-    personalFloatingEnabled: settings.personalFloatingEnabled === true,
+    personalFloatingEnabled: settings.personalToken?.trim() !== '' || settings.personalFloatingEnabled === true,
     personalToken: String(settings.personalToken ?? defaultSettings.personalToken),
     poolGroupName: poolGroupNames[0] ?? defaultSettings.poolGroupName,
     poolGroupNames,
-    refreshSeconds: Number.isFinite(refreshSeconds) ? clamp(Math.round(refreshSeconds), 10, 300) : 30
+    refreshSeconds: Number.isFinite(refreshSeconds) ? clamp(Math.round(refreshSeconds), 10, 300) : 30,
+    stayExpanded: settings.stayExpanded === true,
+    alwaysOnTop: settings.alwaysOnTop !== false
   }
 }
 

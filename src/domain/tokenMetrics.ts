@@ -1,5 +1,6 @@
 export interface TokenOrbMetrics {
   todayTokens: number | null
+  todayCost: number | null
   firstTokenMs: number | null
   updatedAt: string | null
 }
@@ -24,8 +25,20 @@ export interface AdminMonitorMetrics {
   poolAccountDetails: PoolAccountDetailItem[]
   userRanking: UserTodayUsageRankItem[]
   userIdentities?: UserIdentityItem[]
+  /** Optional host/runtime telemetry exposed by the admin dashboard and Ops APIs. */
+  serverStatus?: ServerStatus
+  serverLatencyMs?: number | null
+  serverCpuPercent?: number | null
+  serverMemoryPercent?: number | null
+  serverUptimeSeconds?: number | null
+  codexStatus?: CodexTaskStatus
+  activeCodexTasks?: number | null
+  queuedCodexTasks?: number | null
   updatedAt: string | null
 }
+
+export type ServerStatus = 'online' | 'degraded' | 'offline' | 'unknown'
+export type CodexTaskStatus = 'running' | 'queued' | 'idle' | 'error' | 'unknown'
 
 export interface PoolAccountSummary {
   active: number
@@ -145,9 +158,10 @@ export function buildSub2apiHeaders(token: string): Record<string, string> {
 
 export function buildAdminApiKeyHeaders(apiKey: string): Record<string, string> {
   const trimmed = apiKey.trim()
+  const normalizedKey = trimmed.replace(/^Bearer\s+/i, '').trim()
   return {
-    'X-API-Key': trimmed,
-    Authorization: /^Bearer\s+/i.test(trimmed) ? trimmed : `Bearer ${trimmed}`,
+    'X-API-Key': normalizedKey,
+    Authorization: `Bearer ${normalizedKey}`,
     Accept: 'application/json'
   }
 }
@@ -190,6 +204,61 @@ export function parseAverageDurationMs(payload: unknown): number | null {
 export function parseActiveUsers(payload: unknown): number | null {
   const record = unwrapData(payload)
   return readNumber(record, 'active_users')
+}
+
+/** Read telemetry from sub2api's documented admin dashboard and Ops payloads. */
+export function parseServerTelemetry(
+  dashboardPayload: unknown,
+  opsOverviewPayload: unknown = null,
+  opsConcurrencyPayload: unknown = null
+): {
+  cpuPercent: number | null
+  memoryPercent: number | null
+  uptimeSeconds: number | null
+  codexStatus: CodexTaskStatus
+  activeCodexTasks: number | null
+  queuedCodexTasks: number | null
+} {
+  const dashboard = unwrapData(dashboardPayload)
+  const overview = unwrapData(opsOverviewPayload)
+  const systemMetrics = isRecord(overview?.system_metrics) ? overview.system_metrics : null
+  const concurrency = readOpenAiConcurrency(opsConcurrencyPayload)
+
+  let codexStatus: CodexTaskStatus = 'unknown'
+  if (concurrency) {
+    if (concurrency.active > 0) codexStatus = 'running'
+    else if (concurrency.queued > 0) codexStatus = 'queued'
+    else codexStatus = 'idle'
+  }
+
+  return {
+    cpuPercent: normalizePercent(readNumber(systemMetrics, 'cpu_usage_percent')),
+    memoryPercent: normalizePercent(readNumber(systemMetrics, 'memory_usage_percent')),
+    uptimeSeconds: readNumber(dashboard, 'uptime'),
+    codexStatus,
+    activeCodexTasks: concurrency?.active ?? null,
+    queuedCodexTasks: concurrency?.queued ?? null
+  }
+}
+
+function readOpenAiConcurrency(payload: unknown): { active: number; queued: number } | null {
+  const root = unwrapData(payload)
+  if (root?.enabled !== true || !isRecord(root.platform)) return null
+
+  const entry = isRecord(root.platform.openai)
+    ? root.platform.openai
+    : Object.values(root.platform).find((item) => isRecord(item) && item.platform === 'openai')
+  if (!isRecord(entry)) return null
+
+  const active = readNumber(entry, 'current_in_use')
+  const queued = readNumber(entry, 'waiting_in_queue')
+  if (active === null || queued === null) return null
+  return { active: Math.max(0, active), queued: Math.max(0, queued) }
+}
+
+function normalizePercent(value: number | null): number | null {
+  if (value === null || !Number.isFinite(value)) return null
+  return Math.min(100, Math.max(0, value))
 }
 
 export function parseLatestFirstTokenMs(payload: unknown): number | null {

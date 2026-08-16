@@ -1,595 +1,125 @@
 <template>
   <main v-if="isTrayMenuView" class="tray-menu-shell">
-    <button class="tray-menu-item" type="button" @click="runTrayCommand('monitor')">
-      <ListChecks :size="18" />
-      <span>显示监控面板</span>
-    </button>
-    <button class="tray-menu-item" type="button" @click="runTrayCommand('settings')">
-      <Settings :size="18" />
-      <span>设置</span>
-    </button>
-    <button class="tray-menu-item" type="button" @click="runTrayCommand('update')">
-      <RefreshCw :size="18" />
-      <span>{{ platformUpdateAvailable ? '有版本更新' : '检查更新' }}</span>
-      <i v-if="platformUpdateAvailable" class="tray-menu-update-dot"></i>
-    </button>
-    <div class="tray-menu-version">当前版本 v{{ appVersion }}</div>
-    <div class="tray-menu-separator"></div>
-    <button class="tray-menu-item tray-menu-item--quit" type="button" @click="runTrayCommand('quit')">
-      <Power :size="18" />
-      <span>退出 Token Orb</span>
-    </button>
+    <button class="tray-menu-item" type="button" @click="runTrayCommand('monitor')"><Gauge :size="16" /><span>打开监控</span></button>
+    <button class="tray-menu-item" type="button" @click="runTrayCommand('settings')"><Settings :size="16" /><span>重新配置</span></button>
+    <button class="tray-menu-item" type="button" @click="runTrayCommand('update')"><RefreshCw :size="16" /><span>检查更新</span><i v-if="platformUpdateAvailable" class="tray-menu-update-dot" /></button>
+    <div class="tray-menu-version">Sub2API Pulse v{{ appVersion }}</div>
+    <div class="tray-menu-separator" />
+    <button class="tray-menu-item tray-menu-item--quit" type="button" @click="runTrayCommand('quit')"><Power :size="16" /><span>退出</span></button>
   </main>
 
-  <main v-else-if="isSettingsView" class="settings-shell">
-    <section class="settings-panel standalone">
-      <div class="section-title">
-        <MonitorDot :size="18" />
-        <span>连接设置</span>
-      </div>
-
-      <label class="field">
-        <span>sub2api Base URL</span>
-        <input v-model="draft.sub2apiBaseUrl" placeholder="http://172.16.5.12:8081" />
-      </label>
-
-      <label class="field">
-        <span>管理员 API Key</span>
-        <input v-model="draft.adminApiKey" type="password" placeholder="用于读取系统监控数据" />
-      </label>
-
-      <label class="field switch-field">
-        <span>悬浮球</span>
-        <span class="switch-control">
-          <input v-model="draft.personalFloatingEnabled" name="personal-floating-enabled" type="checkbox" />
-          <i></i>
-        </span>
-      </label>
-
-      <label v-if="draft.personalFloatingEnabled" class="field personal-token-field">
-        <span class="field-heading">
-          <span>个人 JWT / Bearer Token（可选）</span>
-          <button class="secondary-mini-button" type="button" :disabled="personalTokenTesting" @click.prevent.stop="testPersonalToken">
-            {{ personalTokenTesting ? '测试中' : '测试' }}
-          </button>
-        </span>
-        <input v-model="draft.personalToken" type="password" placeholder="用于悬浮球个人数据" />
-        <em v-if="personalTokenTestMessage" class="field-message" :class="personalTokenTestState">
-          {{ personalTokenTestMessage }}
-        </em>
-      </label>
-
-      <label class="field pool-group-field">
-        <span>号池分组名称（可选）</span>
-        <div class="tag-input" @click="focusPoolGroupInput">
-          <button
-            v-for="name in draft.poolGroupNames"
-            :key="name"
-            class="tag-chip"
-            type="button"
-            :title="`移除 ${name}`"
-            @click.stop="removePoolGroupName(name)"
-          >
-            <span>{{ name }}</span>
-            <X :size="13" />
-          </button>
-          <input
-            ref="poolGroupInputRef"
-            v-model="poolGroupNameInput"
-            placeholder="输入后按回车添加，留空统计全部正常账号"
-            @keydown.enter.prevent="addPoolGroupName"
-            @keydown.backspace="removeLastPoolGroupNameWhenEmpty"
-          />
-        </div>
-      </label>
-
-      <label class="field compact-field">
-        <span>刷新间隔</span>
-        <input v-model.number="draft.refreshSeconds" min="10" max="300" step="5" type="number" />
-        <em>秒</em>
-      </label>
-
-      <div v-if="errorMessage" class="error-box">{{ errorMessage }}</div>
-
-      <div class="settings-panel__actions">
-        <button class="primary-button" type="button" @click="saveDraft">保存配置</button>
-        <span v-if="saveMessage" class="save-message">{{ saveMessage }}</span>
+  <main v-else-if="isUpdaterView" class="utility-shell">
+    <section class="utility-panel">
+      <header class="utility-header"><div class="title-with-icon"><RefreshCw :size="17" /><strong>应用更新</strong></div><button class="icon-button" type="button" title="关闭" @click="closeWindow"><X :size="17" /></button></header>
+      <div class="version-line"><strong>v{{ appVersion }}</strong><span v-if="updateVersion">最新 v{{ updateVersion }}</span></div>
+      <p class="utility-status" :class="updateState">{{ updateMessage }}</p>
+      <pre v-if="updateBody" class="release-notes">{{ updateBody }}</pre>
+      <div v-if="downloadPercent !== null" class="update-progress"><i :style="{ width: `${downloadPercent}%` }" /></div>
+      <div class="utility-actions">
+        <button v-if="updateState === 'available'" class="primary-button" type="button" @click="installAppUpdate"><Download :size="15" />立即更新</button>
+        <button v-else-if="updateState === 'installed'" class="primary-button" type="button" @click="restartApp">重启完成更新</button>
+        <button v-else class="secondary-button" type="button" :disabled="updateBusy" @click="checkForAppUpdate"><RefreshCw :class="{ spinning: updateBusy }" :size="15" />重新检查</button>
       </div>
     </section>
   </main>
 
-  <main v-else-if="isUpdaterView" class="settings-shell update-shell">
-    <section ref="updatePanelRef" class="settings-panel standalone update-panel">
-      <div class="section-title">
-        <span>当前版本</span>
-        <button class="update-refresh-button" type="button" :disabled="updateBusy" title="重新检查更新" @click="checkForAppUpdate">
-          <RefreshCw :class="{ spinning: updateState === 'checking' || updateState === 'downloading' }" :size="20" />
-        </button>
-      </div>
+  <main v-else-if="isSettingsView || showInlineSettings" class="utility-shell settings-shell">
+    <section class="utility-panel settings-panel">
+      <header class="utility-header"><div class="title-with-icon"><SlidersHorizontal :size="17" /><strong>连接设置</strong></div><button class="icon-button" type="button" title="关闭" @click="closeWindow"><X :size="17" /></button></header>
+      <p class="settings-caption">sub2api / 监控数据源</p>
+      <div class="setup-steps"><span class="is-active">01</span><i /><span>连接</span><i /><span>显示</span></div>
+      <form class="settings-form" @submit.prevent="saveDraft">
+        <label class="field"><span>服务器地址</span><div class="input-wrap"><Link2 :size="14" /><input v-model="draft.sub2apiBaseUrl" autocomplete="url" placeholder="http://127.0.0.1:8081" /></div></label>
+        <label class="field"><span>管理员 API Key <em>账号、服务器与 Codex</em></span><div class="input-wrap"><KeyRound :size="14" /><input v-model="draft.adminApiKey" autocomplete="off" type="password" placeholder="读取管理员指标" /></div></label>
+        <label class="field"><span>个人 Token <em>可选</em></span><div class="input-wrap"><KeyRound :size="14" /><input v-model="draft.personalToken" autocomplete="off" type="password" placeholder="读取个人 Token" /></div></label>
+        <label class="field"><span>账号池分组 <em>可选</em></span><div class="input-wrap"><Database :size="14" /><input v-model="draft.poolGroupName" placeholder="留空统计全部账号" /></div></label>
+        <label class="field field-inline"><span>自动同步</span><div class="number-input"><input v-model.number="draft.refreshSeconds" min="10" max="300" step="5" type="number" /><small>秒</small></div></label>
+        <p v-if="formError" class="form-error" role="alert"><AlertTriangle :size="14" />{{ formError }}</p><p v-if="saveMessage" class="form-success" role="status"><CheckCircle2 :size="14" />{{ saveMessage }}</p>
+        <div class="settings-actions"><button class="secondary-button" type="button" :disabled="testing" @click="testDraft"><LoaderCircle v-if="testing" class="spinning" :size="15" /><Wifi v-else :size="15" />测试连接</button><button class="primary-button" type="submit"><CheckCircle2 :size="15" />保存配置</button></div>
+      </form>
+    </section>
+  </main>
 
-      <div class="update-version-hero">
-        <strong>v{{ appVersion }}</strong>
-        <span v-if="updateVersion">最新版本：v{{ updateVersion }}</span>
-      </div>
-
-      <div v-if="updateState === 'available'" class="update-available-card">
-        <Download :size="25" />
-        <div>
-          <strong>有新版本可用！</strong>
-          <span>v{{ updateVersion }}</span>
-        </div>
-      </div>
-
-      <div v-else class="update-status" :class="updateState">{{ updateMessage }}</div>
-
-      <div v-if="updateBody" class="update-notes">
-        <span>更新内容</span>
-        <pre>{{ updateBody }}</pre>
-      </div>
-
-      <div v-if="downloadPercent !== null" class="update-progress">
-        <i :style="{ width: `${downloadPercent}%` }"></i>
-      </div>
-
-      <div class="settings-panel__actions update-actions">
-        <button v-if="updateState === 'available'" class="primary-button" type="button" @click="installAppUpdate">
-          <Download :size="19" />
-          立即更新
-        </button>
-        <button v-if="updateState === 'installed'" class="primary-button" type="button" @click="restartApp">
-          重启完成更新
-        </button>
-      </div>
-      <button class="update-release-notes" type="button" @click="openReleaseNotes">
-        查看更新日志
-        <ExternalLink :size="14" />
+  <main v-else class="app-shell" :class="[`tone-${stateTone}`, { 'is-expanded': expanded, 'is-setup': !configured }]">
+    <section ref="widgetRef" class="quota-surface" :class="{ 'quota-surface--orb': configured && !expanded, 'quota-surface--card': expanded || !configured, 'is-idle': configured && !expanded && !hovered }" data-tauri-drag-region @mouseenter="handleHover(true)" @mouseleave="handleHover(false)" @mousedown="handleSurfaceMouseDown">
+      <button v-if="configured && !expanded" class="quota-orb" type="button" :aria-label="`展开监控，${connectionLabel}，今日 Token ${formattedTodayTokens}，Codex ${codexStatusLabel}`" @click.stop="expandWidget">
+        <span class="orb-sheen" aria-hidden="true" />
+        <span class="island-status" data-window-drag title="拖动悬浮窗" @mousedown.stop="startWindowDrag"><GripHorizontal :size="12" aria-hidden="true" /><i class="orb-led" :class="stateTone" /></span>
+        <span class="island-metric"><strong>{{ compactTodayTokens }}</strong><small>TOKENS</small></span>
+        <span class="island-activity" :class="codexTone" aria-hidden="true"><Bot :size="14" /></span>
       </button>
-    </section>
-  </main>
 
-  <main v-else-if="isPlatformView" class="platform-shell">
-    <section ref="monitorPanelRef" class="monitor-panel" data-tauri-drag-region>
-      <div class="section-title">
-        <ListChecks :size="16" />
-        <span>平台信息</span>
-        <button
-          class="platform-version"
-          :class="{ 'platform-version--available': platformUpdateAvailable }"
-          type="button"
-          :title="platformUpdateAvailable ? '发现新版本，点击更新' : '检查更新'"
-          @click.stop="openUpdateWindow"
-        >
-          <span>v{{ appVersion }}</span>
-          <i v-if="platformUpdateAvailable" class="platform-version__update-dot" aria-label="有版本更新"></i>
-        </button>
-        <time>{{ platformUpdatedText }}</time>
-      </div>
+      <section v-else-if="configured" class="quota-card" :class="`quota-card--${stateTone}`">
+        <header class="card-header" data-tauri-drag-region @mousedown.stop="handleSurfaceMouseDown">
+          <div class="card-title"><p class="eyebrow">SUB2API · {{ dataSourceLabel === '管理员视角' ? 'ADMIN' : 'PERSONAL' }}</p><p class="updated">今日 Token</p></div><span class="drag-cue" title="拖动悬浮窗"><GripHorizontal :size="13" aria-hidden="true" /></span>
+          <nav class="card-actions" aria-label="监控控制" @mousedown.stop>
+            <span class="usage-indicator" :class="connectionState" :title="connectionLabel"><i /></span>
+            <button class="control-button" type="button" :title="loading ? '正在刷新' : '刷新数据'" :aria-label="loading ? '正在刷新' : '刷新数据'" :disabled="loading || !configured" @click.stop="refreshAll"><RefreshCw :class="{ spinning: loading }" :size="13" /></button>
+            <button class="control-button" type="button" :title="stayExpanded ? '关闭固定展开' : '固定展开'" :aria-label="stayExpanded ? '关闭固定展开' : '固定展开'" :aria-pressed="stayExpanded" @click.stop="toggleStayExpanded"><Minimize2 v-if="stayExpanded" :size="13" /><Maximize2 v-else :size="13" /></button>
+            <button class="control-button" type="button" :title="alwaysOnTop ? '关闭置顶' : '保持置顶'" :aria-label="alwaysOnTop ? '关闭置顶' : '保持置顶'" :aria-pressed="alwaysOnTop" @click.stop="toggleAlwaysOnTop"><Pin v-if="alwaysOnTop" :size="13" /><PinOff v-else :size="13" /></button>
+            <button class="control-button" type="button" title="重新配置" aria-label="重新配置" @click.stop="openSettings"><Settings :size="13" /></button>
+          </nav>
+        </header>
 
-      <div v-if="hasAdmin" class="monitor-grid">
-        <article class="monitor-card">
-          <span>今日总 Token</span>
-          <strong>{{ formattedAdminToday }}</strong>
-          <em class="token-cost">{{ formattedAdminTodayCost }}</em>
-        </article>
-        <article class="monitor-card">
-          <div class="monitor-card__header">
-            <span>{{ selectedPoolWindowLabel }}号池剩余量</span>
-            <div class="pool-window-tabs" role="tablist" aria-label="号池统计周期">
-              <button
-                class="pool-window-tab"
-                :class="{ active: poolWindowType === '7d' }"
-                :aria-selected="poolWindowType === '7d'"
-                data-window="7d"
-                type="button"
-                role="tab"
-                @click="poolWindowType = '7d'"
-              >7d</button>
-              <button
-                class="pool-window-tab"
-                :class="{ active: poolWindowType === '5h' }"
-                :aria-selected="poolWindowType === '5h'"
-                data-window="5h"
-                type="button"
-                role="tab"
-                @click="poolWindowType = '5h'"
-              >5h</button>
-            </div>
-          </div>
-          <div class="pool-value-line">
-            <strong :class="selectedPoolStatusClass">{{ formattedSelectedPoolRemaining }}</strong>
-            <span v-if="formattedSelectedPoolLatestReset !== '--'" class="pool-reset-hover">
-              <em>{{ formattedSelectedPoolLatestReset }} 后刷新</em>
-              <span class="pool-reset-popover">
-                <span class="pool-reset-popover__title">{{ selectedPoolWindowLabel }}刷新时间列表</span>
-                <span v-if="formattedSelectedPoolResetItems.length === 0" class="pool-reset-empty">暂无刷新时间</span>
-                <span v-for="(item, index) in formattedSelectedPoolResetItems" :key="`${item.resetAt}-${index}`" class="pool-reset-row">
-                  <span class="pool-reset-status" :class="item.statusClass">{{ item.statusText }}</span>
-                  <time>{{ item.displayTime }}</time>
-                </span>
-              </span>
-            </span>
-          </div>
-          <div class="pool-progress" :class="selectedPoolStatusClass">
-            <i :style="{ width: selectedPoolProgressWidth }"></i>
-          </div>
-        </article>
-      </div>
+        <section class="primary-metric hero-metric" aria-label="今日 Token"><strong>{{ formattedTodayTokens }}</strong><span>tokens</span></section>
+        <div class="metric-meta"><span class="status-copy"><i class="status-dot" :class="connectionState" />{{ connectionLabel }}</span><span>{{ lastUpdatedLabel }}</span></div>
+        <div class="quota-progress" role="progressbar" aria-label="账号池余量" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="poolRemainingNumber ?? undefined"><i :style="{ width: poolProgressWidth }" /></div>
+        <p class="reset-time">账号池余量 {{ formattedPoolRemaining }}<span v-if="errorMessage"> · {{ errorMessage }}</span></p>
 
-      <div v-if="hasAdmin" class="monitor-grid monitor-grid--secondary">
-        <article class="monitor-card">
-          <span>总 Token</span>
-          <strong>{{ formattedAdminTotal }}</strong>
-          <em class="token-cost" title="实际消费">{{ formattedAdminTotalActualCost }}</em>
-        </article>
-        <article class="monitor-card">
-          <span>平均响应</span>
-          <strong class="response-duration">{{ formattedAverageDuration }}</strong>
-          <em class="active-users">{{ formattedActiveUsers }}</em>
-        </article>
-      </div>
+        <section class="metric-grid compact-metrics" aria-label="核心指标">
+          <article class="metric-card metric-card--cost"><span>今日消费</span><strong>{{ formattedTodayCost }}</strong><small>{{ totalCostLabel }}</small></article>
+          <article class="metric-card metric-card--quota"><span>账号余量</span><strong>{{ availableAccountCount }}</strong><small>{{ accountSummaryLabel }}</small></article>
+        </section>
 
-      <div v-if="hasAdmin" class="ranking-box">
-        <div class="section-title">
-          <Users :size="16" />
-          <span class="ranking-title-label">排行榜</span>
-          <div class="ranking-tabs" role="tablist" aria-label="今日榜单切换">
-            <button
-              class="ranking-tab"
-              :class="{ active: rankingView === 'users' && rankingMode === 'tokens' }"
-              type="button"
-              role="tab"
-              :aria-selected="rankingView === 'users' && rankingMode === 'tokens'"
-              @click="showUserRanking('tokens')"
-            >
-              今日用量榜
-            </button>
-            <button
-              class="ranking-tab"
-              :class="{ active: rankingView === 'users' && rankingMode === 'cost' }"
-              type="button"
-              role="tab"
-              :aria-selected="rankingView === 'users' && rankingMode === 'cost'"
-              @click="showUserRanking('cost')"
-            >
-              今日消费榜
-            </button>
-            <button
-              class="ranking-tab"
-              :class="{ active: rankingView === 'models' }"
-              type="button"
-              role="tab"
-              :aria-selected="rankingView === 'models'"
-              @click="showModelRanking"
-            >
-              模型用量榜
-            </button>
-          </div>
-          <button
-            class="ranking-toggle"
-            :aria-expanded="rankingExpanded"
-            :title="rankingExpanded ? '收起排行榜' : '展开排行榜'"
-            type="button"
-            @click="toggleRanking"
-          >
-            <ChevronUp v-if="rankingExpanded" :size="16" />
-            <ChevronDown v-else :size="16" />
-          </button>
-        </div>
-        <div v-if="rankingExpanded" class="ranking-content">
-        <template v-if="rankingView === 'users'">
-          <div v-if="adminMetrics.userRanking.length === 0" class="empty-line">暂无数据</div>
-          <div v-for="(item, index) in displayedUserRanking" :key="rankingUserKey(item)" class="ranking-entry">
-          <button
-            class="ranking-row"
-            :aria-controls="`ranking-models-${rankingUserKey(item)}`"
-            :aria-expanded="isRankingUserExpanded(item)"
-            :title="isRankingUserExpanded(item) ? '收起模型用量' : '展开模型用量'"
-            type="button"
-            @click="toggleRankingUser(item)"
-          >
-            <b>#{{ index + 1 }}</b>
-            <span>{{ item.displayName }}</span>
-            <div class="ranking-value" :class="{ 'ranking-value--cost': rankingMode === 'cost' }">
-              <strong>{{ formatTokenCount(item.tokens) }}</strong>
-              <em class="token-cost">{{ formatCost(item.actualCost) }}</em>
-            </div>
-            <ChevronUp v-if="isRankingUserExpanded(item)" class="ranking-chevron" :size="15" />
-            <ChevronDown v-else class="ranking-chevron" :size="15" />
-          </button>
-          <div
-            v-if="isRankingUserExpanded(item)"
-            :id="`ranking-models-${rankingUserKey(item)}`"
-            class="ranking-model-list"
-          >
-            <div v-if="rankingModelUsageState[rankingUserKey(item)] === 'loading'" class="ranking-model-empty">加载模型用量中...</div>
-            <div v-else-if="rankingModelUsageState[rankingUserKey(item)] === 'error'" class="ranking-model-empty">模型用量加载失败</div>
-            <div v-else-if="sortedRankingModelUsage(item).length === 0" class="ranking-model-empty">暂无模型用量</div>
-            <div v-for="model in sortedRankingModelUsage(item)" :key="model.model" class="ranking-model-row">
-              <span>{{ model.model }}</span>
-              <div class="ranking-value ranking-value--model" :class="{ 'ranking-value--cost': rankingMode === 'cost' }">
-                <strong>{{ formatTokenCount(model.tokens) }}</strong>
-                <em class="token-cost">{{ formatCost(model.actualCost) }}</em>
-              </div>
-            </div>
-          </div>
-        </div>
-        </template>
-        <div v-else class="model-ranking-table">
-          <div class="model-ranking-head">
-            <span>模型</span>
-            <button
-              :class="{ active: modelRankingSort === 'requests' }"
-              :aria-pressed="modelRankingSort === 'requests'"
-              title="按请求数从高到低排序"
-              type="button"
-              @click="modelRankingSort = 'requests'"
-            >
-              <span>请求</span>
-              <ArrowDown v-if="modelRankingSort === 'requests'" :size="11" />
-              <ArrowUpDown v-else :size="11" />
-            </button>
-            <button
-              :class="{ active: modelRankingSort === 'tokens' }"
-              :aria-pressed="modelRankingSort === 'tokens'"
-              title="按 Token 从高到低排序"
-              type="button"
-              @click="modelRankingSort = 'tokens'"
-            >
-              <span>Token</span>
-              <ArrowDown v-if="modelRankingSort === 'tokens'" :size="11" />
-              <ArrowUpDown v-else :size="11" />
-            </button>
-            <button
-              :class="{ active: modelRankingSort === 'cost' }"
-              :aria-pressed="modelRankingSort === 'cost'"
-              title="按消费从高到低排序"
-              type="button"
-              @click="modelRankingSort = 'cost'"
-            >
-              <span>消费</span>
-              <ArrowDown v-if="modelRankingSort === 'cost'" :size="11" />
-              <ArrowUpDown v-else :size="11" />
-            </button>
-            <span></span>
-          </div>
-          <div v-if="modelRankingState === 'loading'" class="ranking-model-empty">加载模型用量中...</div>
-          <div v-else-if="modelRankingState === 'error'" class="ranking-model-empty">模型用量加载失败</div>
-          <div v-else-if="sortedModelRanking.length === 0" class="ranking-model-empty">暂无模型用量</div>
-          <div v-for="item in sortedModelRanking" :key="item.model" class="model-ranking-entry">
-            <button
-              class="model-ranking-row"
-              :aria-controls="`model-ranking-users-${modelRankingKey(item.model)}`"
-              :aria-expanded="isModelRankingExpanded(item.model)"
-              :title="isModelRankingExpanded(item.model) ? '收起用户用量' : '展开用户用量'"
-              type="button"
-              @click="toggleModelRanking(item.model)"
-            >
-              <span :title="item.model">{{ item.model }}</span>
-              <strong>{{ formatRequestCount(item.requests) }}</strong>
-              <strong>{{ formatTokenCount(item.tokens) }}</strong>
-              <em>{{ formatCost(item.actualCost) }}</em>
-              <ChevronUp v-if="isModelRankingExpanded(item.model)" :size="15" />
-              <ChevronDown v-else :size="15" />
-            </button>
-            <div v-if="isModelRankingExpanded(item.model)" :id="`model-ranking-users-${modelRankingKey(item.model)}`" class="model-ranking-users">
-              <div v-if="modelRankingUserState[modelRankingKey(item.model)] === 'loading'" class="ranking-model-empty">加载用户用量中...</div>
-              <div v-else-if="modelRankingUserState[modelRankingKey(item.model)] === 'error'" class="ranking-model-empty">用户用量加载失败</div>
-              <div v-else-if="sortedModelRankingUsers(item.model).length === 0" class="ranking-model-empty">暂无用户用量</div>
-              <div v-for="user in sortedModelRankingUsers(item.model)" :key="`${item.model}-${user.userId ?? user.displayName}`" class="model-ranking-user-row">
-                <span :title="user.displayName">{{ user.displayName }}</span>
-                <strong>{{ formatRequestCount(user.requests) }}</strong>
-                <strong>{{ formatTokenCount(user.tokens) }}</strong>
-                <em>{{ formatCost(user.actualCost) }}</em>
-              </div>
-            </div>
-          </div>
-        </div>
-        </div>
-      </div>
+        <section class="info-section server-section"><div class="section-heading"><span><Gauge :size="13" />服务器性能</span><small>{{ endpointLabel }}</small></div><div class="performance-grid"><div class="performance-item"><span><Cpu :size="12" />CPU</span><strong>{{ formattedCpu }}</strong><div class="thin-progress"><i :class="cpuClass" :style="{ width: performanceWidth(adminMetrics.serverCpuPercent) }" /></div></div><div class="performance-item"><span><Database :size="12" />内存</span><strong>{{ formattedMemory }}</strong><div class="thin-progress"><i :class="memoryClass" :style="{ width: performanceWidth(adminMetrics.serverMemoryPercent) }" /></div></div><div class="performance-item performance-item--compact"><span><Wifi :size="12" />延迟</span><strong>{{ formattedLatency }}</strong></div><div class="performance-item performance-item--compact"><span><Clock3 :size="12" />运行</span><strong>{{ formattedUptime }}</strong></div></div></section>
 
-      <div v-if="hasAdmin" class="account-details-box">
-        <div class="account-details-header">
-          <span class="account-details-title">
-            <Users :size="16" />
-            <span>账号信息</span>
-          </span>
-          <span class="pool-summary-badges">
-            <span class="pool-summary-badge account-badge" title="账号：正常 / 限流中 / 错误 / 总数量">
-              <Users :size="12" />
-              <span>账号：</span>
-              <strong class="account-counts">
-                <button
-                  class="account-filter account-status-filter normal"
-                  :aria-pressed="selectedAccountStatus === 'normal'"
-                  data-status="normal"
-                  title="筛选正常账号"
-                  type="button"
-                  @click="setAccountStatusFilter('normal')"
-                >{{ formattedPoolAccounts.active }}</button>
-                <span class="account-separator">/</span>
-                <button
-                  class="account-filter account-status-filter limited"
-                  :aria-pressed="selectedAccountStatus === 'limited'"
-                  data-status="limited"
-                  title="筛选限流中账号"
-                  type="button"
-                  @click="setAccountStatusFilter('limited')"
-                >{{ formattedPoolAccounts.limited }}</button>
-                <span class="account-separator">/</span>
-                <button
-                  class="account-filter account-status-filter error"
-                  :aria-pressed="selectedAccountStatus === 'error'"
-                  data-status="error"
-                  title="筛选错误账号"
-                  type="button"
-                  @click="setAccountStatusFilter('error')"
-                >{{ formattedPoolAccounts.error }}</button>
-                <span class="account-separator">/</span>
-                <button
-                  class="account-filter account-status-filter total"
-                  :aria-pressed="selectedAccountStatus === 'all'"
-                  data-status="all"
-                  title="显示全部账号"
-                  type="button"
-                  @click="setAccountStatusFilter('all')"
-                >{{ formattedPoolAccounts.total }}</button>
-              </strong>
-            </span>
-            <span class="pool-summary-badge capacity-badge" title="当前容量 / 总容量">
-              <Network :size="12" />
-              <span>容量：</span>
-              <strong>{{ formattedPoolCapacity }}</strong>
-            </span>
-          </span>
-          <button
-            class="account-details-toggle"
-            :aria-expanded="accountDetailsExpanded"
-            :title="accountDetailsExpanded ? '收起账号详情' : '展开账号详情'"
-            type="button"
-            @click="toggleAccountDetails"
-          >
-          <ChevronUp v-if="accountDetailsExpanded" class="account-details-chevron" :size="16" />
-          <ChevronDown v-else class="account-details-chevron" :size="16" />
-          </button>
-        </div>
+        <section class="codex-section" :class="codexTone"><div class="section-heading"><span><Bot :size="13" />Codex 调度</span><b class="codex-badge">{{ codexStatusLabel }}</b></div><div class="codex-content"><div class="codex-pulse"><i /><i /><i /></div><div class="codex-copy"><strong>{{ codexHeadline }}</strong><span>{{ codexDetail }}</span></div><div class="task-counts"><b>{{ taskCount(adminMetrics.activeCodexTasks) }}</b><small>运行</small><b>{{ taskCount(adminMetrics.queuedCodexTasks) }}</b><small>排队</small></div></div></section>
+        <footer class="widget-footer"><span><i class="footer-led" :class="connectionState" />{{ refreshLabel }}</span><button type="button" class="collapse-button" title="收起悬浮窗" aria-label="收起悬浮窗" @mousedown.stop @click.stop="collapseWidget"><ChevronDown :size="14" /></button></footer>
+      </section>
 
-        <div v-if="accountDetailsExpanded" class="account-details-list">
-          <div v-if="filteredPoolAccountDetails.length === 0" class="empty-line">暂无符合条件的账号</div>
-          <article
-            v-for="item in filteredPoolAccountDetails"
-            :key="`${item.rank}-${item.name}`"
-            class="account-detail-card"
-            :class="item.status"
-          >
-            <div class="account-detail-card__head">
-              <span class="account-detail-card__identity">
-                <b>#{{ item.priority ?? '--' }}</b>
-                <span class="account-detail-card__name">{{ item.name }}</span>
-              </span>
-              <span class="account-status-pill" :class="item.status">{{ item.statusText }}</span>
-            </div>
-            <div class="account-detail-card__meta">
-              <span class="account-today-stats">
-                <span>金额 <strong>{{ formatFixedCost(item.sevenDayCost) }}</strong></span>
-                <span>Token <strong>{{ formatCompactTokenCount(item.todayTokens) }}</strong></span>
-              </span>
-              <span class="account-schedule-stack">
-                <span class="schedule-pill" :class="{ off: !item.schedulable }">
-                  <i></i>
-                  {{ item.scheduleText }}
-                </span>
-                <span class="account-capacity-pill" :class="{ active: (item.capacityUsed ?? 0) > 0 }">{{ item.capacityText }}</span>
-              </span>
-              <span class="usage-windows">
-                <span v-if="item.usageWindows.length === 0" class="usage-window empty">无可用窗口</span>
-                <span v-for="window in item.usageWindows" :key="window.type" class="usage-window">
-                  <span class="usage-window-label">{{ window.type }}</span>
-                  <span class="usage-window-bar">
-                    <i
-                      :class="formatAccountWindowClass(window.usedPercent)"
-                      :style="{ width: formatAccountWindowWidth(window.usedPercent) }"
-                    ></i>
-                  </span>
-                  <span>{{ formatAccountWindowText(window) }}</span>
-                </span>
-              </span>
-            </div>
-          </article>
-        </div>
-      </div>
-
-      <div v-else class="empty-line">配置管理员 API Key 后显示系统监控列表</div>
-    </section>
-  </main>
-
-  <main v-else class="personal-shell" :class="{ collapsed: personalCollapsed }">
-    <button
-      v-if="personalCollapsed"
-      class="collapsed-orb"
-      :class="poolStatusClass"
-      :style="poolFillStyle"
-      type="button"
-      title="展开个人信息"
-      @click="toggleCollapsedOrb"
-      @mousedown="startCollapsedOrbDrag"
-    >
-      <span>{{ formattedFirstToken }}</span>
-      <em>{{ formattedPoolRemaining }}</em>
-    </button>
-
-    <section v-else class="orb" @mousedown.self="startWindowDrag">
-      <div class="orb__header" @mousedown.self="startWindowDrag">
-        <div class="orb__identity">
-          <div class="orb__status" :class="statusClass"></div>
-          <span>个人信息</span>
-        </div>
-        <div class="orb__actions">
-          <button class="icon-button" type="button" title="折叠到屏幕边缘" @click.stop="togglePersonalCollapsed">
-            <PanelRightClose :size="15" />
-          </button>
-          <button class="icon-button" type="button" title="关闭个人悬浮球" @click.stop="hidePersonalOrb">
-            <X :size="15" />
-          </button>
-        </div>
-      </div>
-
-      <div class="metric-row">
-        <span class="metric-row__label">今日 Token</span>
-        <strong>{{ formattedPersonalToday }}</strong>
-      </div>
-      <div class="metric-row">
-        <span class="metric-row__label">首 Token</span>
-        <strong>{{ formattedFirstToken }}</strong>
-      </div>
-
-      <div class="orb__footer">
-        <span>{{ footerText }}</span>
-        <button class="icon-button" type="button" title="刷新" :disabled="loading" @click.stop="refreshAll">
-          <RefreshCw :class="{ spinning: loading }" :size="15" />
-        </button>
-      </div>
+      <section v-if="!configured" class="onboarding quota-card quota-card--idle"><header class="card-header" data-tauri-drag-region @mousedown.stop="handleSurfaceMouseDown"><div class="card-title"><p class="eyebrow">SUB2API PULSE</p><p class="updated">连接你的 sub2api</p></div><span class="drag-cue" title="拖动悬浮窗"><GripHorizontal :size="13" aria-hidden="true" /></span><Sparkles :size="20" class="setup-mark" aria-hidden="true" /></header><p class="setup-intro">先配置服务器和认证信息，悬浮窗会自动收起为 orb。</p><form class="quick-setup" @submit.prevent="saveDraft"><label class="field"><span>服务器地址</span><div class="input-wrap"><Link2 :size="14" /><input v-model="draft.sub2apiBaseUrl" autocomplete="url" type="url" placeholder="http://127.0.0.1:8081" /></div></label><label class="field"><span>管理员 API Key <em>可选</em></span><div class="input-wrap"><KeyRound :size="14" /><input v-model="draft.adminApiKey" autocomplete="off" type="password" placeholder="管理员 API Key" /></div></label><label class="field"><span>个人 Token <em>可选</em></span><div class="input-wrap"><KeyRound :size="14" /><input v-model="draft.personalToken" autocomplete="off" type="password" placeholder="个人用量 Token" /></div></label><p v-if="formError" class="form-error" role="alert"><AlertTriangle :size="14" />{{ formError }}</p><button class="primary-button primary-button--wide" type="submit"><Wifi :size="15" />连接并开始监控</button></form><button class="text-button" type="button" @click="openSettings">打开完整配置</button></section>
     </section>
   </main>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import {
-  ArrowDown,
-  ArrowUpDown,
-  ChevronDown,
-  ChevronUp,
+  AlertTriangle,
+  Bot,
+  CheckCircle2,
+  Clock3,
+  Cpu,
+  Database,
   Download,
-  ExternalLink,
-  ListChecks,
-  MonitorDot,
-  Network,
-  PanelRightClose,
+  Gauge,
+  GripHorizontal,
+  KeyRound,
+  Link2,
+  LoaderCircle,
+  ChevronDown,
+  Maximize2,
+  Minimize2,
+  Pin,
+  PinOff,
   Power,
   RefreshCw,
   Settings,
-  Users,
+  SlidersHorizontal,
+  Sparkles,
+  Wifi,
   X
 } from 'lucide-vue-next'
-import { fetchAdminModelUsageRanking, fetchAdminModelUserUsage, fetchAdminMonitorMetrics, fetchAdminUserModelUsage, fetchSub2apiMetrics } from '@/domain/sub2apiClient'
+import { fetchAdminMonitorMetrics, fetchSub2apiMetrics } from '@/domain/sub2apiClient'
 import {
   formatCost,
-  formatFixedCost,
-  formatFirstToken,
-  formatPoolAccountCount,
-  formatPoolCapacity,
   formatTokenCount,
   type AdminMonitorMetrics,
-  type ModelUsageRankItem,
-  type ModelUserUsageItem,
-  type PoolAccountUsageWindow,
-  type PoolAccountUsageWindowType,
-  type PoolResetItem,
-  type TokenOrbMetrics,
-  type UserModelUsageItem,
-  type UserTodayUsageRankItem
+  type CodexTaskStatus,
+  type TokenOrbMetrics
 } from '@/domain/tokenMetrics'
 import {
+  defaultSettings,
   hasAdminSettings,
   hasPersonalSettings,
   loadSettings,
@@ -600,565 +130,466 @@ import {
 
 type TauriWindowApi = typeof import('@tauri-apps/api/window')
 
-interface FloatingState {
-  x: number | null
-  y: number | null
-  collapsed: boolean
-  expandedX: number | null
-  expandedY: number | null
-}
-
-type AccountStatusFilter = 'normal' | 'limited' | 'error' | 'all'
-type RankingView = 'users' | 'models'
-type ModelRankingSort = 'requests' | 'tokens' | 'cost'
-
-const floatingStorageKey = 'token-orb-floating-v1'
-const accountFilterStorageKey = 'token-orb-account-filter-v1'
-const expandedSize = { width: 184, height: 132 }
-const collapsedSize = { width: 44, height: 44 }
-const settings = ref<AppSettings>(loadSettings())
-const draft = reactive<AppSettings>(createSettingsDraft(settings.value))
-const poolGroupNameInput = ref('')
-const poolGroupInputRef = ref<HTMLInputElement | null>(null)
-const personalMetrics = ref<TokenOrbMetrics>({ todayTokens: null, firstTokenMs: null, updatedAt: null })
-const adminMetrics = ref<AdminMonitorMetrics>({
-  todayTotalTokens: null,
-  todayTotalCost: null,
-  totalTokens: null,
-  totalActualCost: null,
-  totalAccountCost: null,
-  totalStandardCost: null,
-  averageDurationMs: null,
-  activeUsers: null,
-  poolRemainingPercent: null,
-  poolLatestResetAt: null,
-  poolResetItems: [],
-  poolAccounts: null,
-  poolCapacity: null,
-  poolAccountDetails: [],
-  userRanking: [],
-  updatedAt: null
-})
-const view = new URLSearchParams(window.location.search).get('view') ?? 'personal'
+const view = new URLSearchParams(window.location.search).get('view') ?? 'platform'
 const isSettingsView = view === 'settings'
-const isPlatformView = view === 'platform'
 const isUpdaterView = view === 'updater'
 const isTrayMenuView = view === 'tray-menu'
+const settings = ref<AppSettings>(loadSettings())
+const draft = reactive<AppSettings>(createDraft(settings.value))
+const showInlineSettings = ref(false)
 const loading = ref(false)
+const testing = ref(false)
 const errorMessage = ref('')
+const formError = ref('')
 const saveMessage = ref('')
-const personalTokenTesting = ref(false)
-const personalTokenTestState = ref<'success' | 'error' | ''>('')
-const personalTokenTestMessage = ref('')
-const personalCollapsed = ref(false)
-const personalOrbDismissed = ref(false)
-const accountDetailsExpanded = ref(true)
-const rankingExpanded = ref(true)
-const selectedAccountStatus = ref<AccountStatusFilter>(loadAccountStatusFilter())
-const monitorPanelRef = ref<HTMLElement | null>(null)
-const poolWindowType = ref<PoolAccountUsageWindowType>('7d')
-const rankingMode = ref<'tokens' | 'cost'>('tokens')
-const rankingView = ref<RankingView>('users')
-const modelRankingSort = ref<ModelRankingSort>('tokens')
-const modelRanking = ref<ModelUsageRankItem[]>([])
-const modelRankingState = ref<'idle' | 'loading' | 'ready' | 'error'>('idle')
-const expandedModelRankingKeys = ref<string[]>([])
-const modelRankingUsers = ref<Record<string, ModelUserUsageItem[]>>({})
-const modelRankingUserState = ref<Record<string, 'loading' | 'ready' | 'error'>>({})
-const expandedRankingUserKeys = ref<string[]>([])
-const rankingModelUsage = ref<Record<string, UserModelUsageItem[]>>({})
-const rankingModelUsageState = ref<Record<string, 'loading' | 'ready' | 'error'>>({})
+const personalMetrics = ref<TokenOrbMetrics>({ todayTokens: null, todayCost: null, firstTokenMs: null, updatedAt: null })
+const adminMetrics = ref<AdminMonitorMetrics>(emptyAdminMetrics())
 const platformUpdateAvailable = ref(false)
-const updatePanelRef = ref<HTMLElement | null>(null)
-const appVersion = ref('0.1.0')
+const appVersion = ref('0.4.13')
 const updateVersion = ref('')
 const updateBody = ref('')
 const updateState = ref<'idle' | 'checking' | 'available' | 'latest' | 'downloading' | 'installed' | 'error'>('idle')
 const updateMessage = ref('点击重新检查获取最新版本。')
 const downloadPercent = ref<number | null>(null)
-let availableUpdate: import('@tauri-apps/plugin-updater').Update | null = null
+const widgetRef = ref<HTMLElement | null>(null)
+const expanded = ref(false)
+const hovered = ref(false)
+const settingsReturnExpanded = ref(false)
+const stayExpanded = ref(settings.value.stayExpanded === true)
+const alwaysOnTop = ref(settings.value.alwaysOnTop !== false)
 let timer: number | null = null
-let saveMessageTimer: number | null = null
-const rankingModelUsageRequestEpochs = new Map<string, number>()
-let modelRankingRefreshEpoch = 0
-let unlistenMoved: (() => void) | null = null
+let refreshGeneration = 0
+let refreshInFlight = false
 let unlistenSettingsChanged: (() => void) | null = null
+let unlistenMonitorVisibility: (() => void) | null = null
 let tauriWindowApi: TauriWindowApi | null = null
-let floatingWindowInitialized = false
-let collapsedDragStarted = false
-let collapsedDragStartAt = 0
+let availableUpdate: import('@tauri-apps/plugin-updater').Update | null = null
 
+const configured = computed(() => hasAdminSettings(settings.value) || hasPersonalSettings(settings.value))
 const hasAdmin = computed(() => hasAdminSettings(settings.value))
 const hasPersonal = computed(() => hasPersonalSettings(settings.value))
-const formattedPersonalToday = computed(() => formatTokenCount(personalMetrics.value.todayTokens))
-const formattedFirstToken = computed(() => formatFirstToken(personalMetrics.value.firstTokenMs))
-const formattedAdminToday = computed(() => formatTokenCount(adminMetrics.value.todayTotalTokens))
-const formattedAdminTodayCost = computed(() => formatCost(adminMetrics.value.todayTotalCost))
-const formattedAdminTotal = computed(() => formatTokenCount(adminMetrics.value.totalTokens ?? null))
-const formattedAdminTotalActualCost = computed(() => formatCost(adminMetrics.value.totalActualCost ?? null))
-const formattedAverageDuration = computed(() => formatDuration(adminMetrics.value.averageDurationMs ?? null))
-const formattedActiveUsers = computed(() => adminMetrics.value.activeUsers == null ? '活跃用户 --' : `${formatRequestCount(adminMetrics.value.activeUsers)} 活跃用户`)
-const formattedPoolAccounts = computed(() => formatPoolAccountCount(adminMetrics.value.poolAccounts))
-const formattedPoolCapacity = computed(() => formatPoolCapacity(adminMetrics.value.poolCapacity))
+const endpointLabel = computed(() => settings.value.sub2apiBaseUrl ? compactEndpoint(settings.value.sub2apiBaseUrl) : '未连接')
+const dataSourceLabel = computed(() => hasAdmin.value ? '管理员视角' : '个人视角')
+const formattedTodayTokens = computed(() => formatTokenCount(hasAdmin.value ? adminMetrics.value.todayTotalTokens : personalMetrics.value.todayTokens))
+const compactTodayTokens = computed(() => compactTokenCount(hasAdmin.value ? adminMetrics.value.todayTotalTokens : personalMetrics.value.todayTokens))
+const formattedTodayCost = computed(() => formatCost(hasAdmin.value ? adminMetrics.value.todayTotalCost : personalMetrics.value.todayCost))
 const formattedPoolRemaining = computed(() => {
-  const value = adminMetrics.value.poolRemainingPercent
+  const value = adminMetrics.value.poolRemainingPercent ?? adminMetrics.value.poolSevenDayRemainingPercent ?? null
   return value === null ? '--' : `${Math.round(value)}%`
 })
-const formattedPoolLatestReset = computed(() => formatResetRemain(adminMetrics.value.poolLatestResetAt))
-const formattedPoolResetItems = computed(() => adminMetrics.value.poolResetItems.map(formatPoolResetItem))
-const selectedPoolWindowLabel = computed(() => poolWindowType.value === '7d' ? '7日' : '5小时')
-const selectedPoolRemainingPercent = computed(() => poolWindowType.value === '7d'
-  ? adminMetrics.value.poolSevenDayRemainingPercent ?? null
-  : adminMetrics.value.poolRemainingPercent)
-const formattedSelectedPoolRemaining = computed(() => {
-  const value = selectedPoolRemainingPercent.value
-  return value === null ? '--' : `${Math.round(value)}%`
-})
-const formattedSelectedPoolLatestReset = computed(() => formatResetRemain(poolWindowType.value === '7d'
-  ? adminMetrics.value.poolSevenDayLatestResetAt ?? null
-  : adminMetrics.value.poolLatestResetAt))
-const formattedSelectedPoolResetItems = computed(() => (poolWindowType.value === '7d'
-  ? adminMetrics.value.poolSevenDayResetItems ?? []
-  : adminMetrics.value.poolResetItems).map(formatPoolResetItem))
-const displayedUserRanking = computed(() => sortUserRanking(adminMetrics.value.userRanking, rankingMode.value))
-const sortedModelRanking = computed(() => sortModelRanking(modelRanking.value, modelRankingSort.value))
-const filteredPoolAccountDetails = computed(() => {
-  if (selectedAccountStatus.value === 'all') return adminMetrics.value.poolAccountDetails
-  return adminMetrics.value.poolAccountDetails.filter((item) => item.status === selectedAccountStatus.value)
+const availableAccountCount = computed(() => {
+  const pool = adminMetrics.value.poolAccounts
+  return pool ? `${pool.active} / ${pool.total}` : '-- / --'
 })
 const poolProgressWidth = computed(() => {
-  const value = adminMetrics.value.poolRemainingPercent
-  if (value === null || Number.isNaN(value)) return '0%'
-  return `${Math.min(100, Math.max(0, value))}%`
+  const value = adminMetrics.value.poolRemainingPercent ?? adminMetrics.value.poolSevenDayRemainingPercent ?? null
+  return value === null ? '0%' : `${Math.min(100, Math.max(0, value))}%`
 })
-const poolStatusClass = computed(() => {
-  const value = adminMetrics.value.poolRemainingPercent
-  if (value === null || Number.isNaN(value)) return 'unknown'
-  if (value < 10) return 'danger'
-  if (value < 20) return 'warning'
+const poolRemainingNumber = computed(() => {
+  const value = adminMetrics.value.poolRemainingPercent ?? adminMetrics.value.poolSevenDayRemainingPercent ?? null
+  return value == null || Number.isNaN(value) ? null : Math.round(Math.min(100, Math.max(0, value)))
+})
+const accountSummaryLabel = computed(() => {
+  const pool = adminMetrics.value.poolAccounts
+  if (!pool) return hasAdmin.value ? '账号状态未提供' : '需管理员 API Key'
+  const remaining = formattedPoolRemaining.value === '--' ? '' : ` · 余量 ${formattedPoolRemaining.value}`
+  return `${pool.limited} 限流 · ${pool.error} 异常${remaining}`
+})
+const totalCostLabel = computed(() => {
+  if (!hasAdmin.value) return '个人统计'
+  const total = adminMetrics.value.totalActualCost
+  return total == null ? '管理员统计' : `累计 ${formatCost(total)}`
+})
+const connectionState = computed<'online' | 'degraded' | 'offline' | 'idle'>(() => {
+  if (!configured.value) return 'idle'
+  if (errorMessage.value && !adminMetrics.value.updatedAt && !personalMetrics.value.updatedAt) return 'offline'
+  if (errorMessage.value) return 'degraded'
+  return 'online'
+})
+const connectionLabel = computed(() => ({ online: '已连接', degraded: '部分异常', offline: '连接失败', idle: '待配置' }[connectionState.value]))
+const stateTone = computed<'healthy' | 'warning' | 'danger' | 'idle'>(() => {
+  if (!configured.value || connectionState.value === 'idle') return 'idle'
+  if (connectionState.value === 'offline') return 'danger'
+  const remaining = poolRemainingNumber.value
+  if (connectionState.value === 'degraded' || (remaining !== null && remaining <= 20)) return 'danger'
+  if (remaining !== null && remaining <= 45) return 'warning'
   return 'healthy'
 })
-const selectedPoolProgressWidth = computed(() => {
-  const value = selectedPoolRemainingPercent.value
-  if (value === null || Number.isNaN(value)) return '0%'
-  return `${Math.min(100, Math.max(0, value))}%`
+const lastUpdatedLabel = computed(() => {
+  const timestamp = adminMetrics.value.updatedAt || personalMetrics.value.updatedAt
+  if (!timestamp) return '等待首次同步'
+  return `更新于 ${new Date(timestamp).toLocaleTimeString('zh-CN', { hour12: false })}`
 })
-const selectedPoolStatusClass = computed(() => {
-  const value = selectedPoolRemainingPercent.value
-  if (value === null || Number.isNaN(value)) return 'unknown'
-  if (value < 10) return 'danger'
-  if (value < 20) return 'warning'
-  return 'healthy'
+const refreshLabel = computed(() => `每 ${settings.value.refreshSeconds}s 自动同步`)
+const serverVersionLabel = computed(() => adminMetrics.value.serverUptimeSeconds == null ? '接口未提供主机指标' : `运行 ${formatUptime(adminMetrics.value.serverUptimeSeconds)}`)
+const formattedCpu = computed(() => formatPercent(adminMetrics.value.serverCpuPercent))
+const formattedMemory = computed(() => formatPercent(adminMetrics.value.serverMemoryPercent))
+const formattedLatency = computed(() => adminMetrics.value.serverLatencyMs == null ? '--' : `${Math.round(adminMetrics.value.serverLatencyMs)}ms`)
+const formattedUptime = computed(() => formatUptime(adminMetrics.value.serverUptimeSeconds))
+const cpuClass = computed(() => performanceTone(adminMetrics.value.serverCpuPercent))
+const memoryClass = computed(() => performanceTone(adminMetrics.value.serverMemoryPercent))
+const codexStatus = computed<CodexTaskStatus>(() => {
+  return adminMetrics.value.codexStatus ?? 'unknown'
 })
-const poolFillStyle = computed(() => {
-  const colorMap = {
-    healthy: '#20e3b2',
-    warning: '#f59e0b',
-    danger: '#fb4d5f',
-    unknown: '#64748b'
-  }
-  return {
-    '--fill-level': poolProgressWidth.value,
-    '--fill-color': colorMap[poolStatusClass.value]
-  }
-})
-const statusClass = computed(() => {
-  if (!hasAdmin.value && !hasPersonal.value) return 'idle'
-  return errorMessage.value ? 'error' : 'online'
-})
-const footerText = computed(() => {
-  if (!hasAdmin.value && !hasPersonal.value) return '待配置'
-  if (errorMessage.value) return '连接异常'
-  const updatedAt = personalMetrics.value.updatedAt || adminMetrics.value.updatedAt
-  if (!updatedAt) return '待刷新'
-  return new Date(updatedAt).toLocaleTimeString('zh-CN', { hour12: false })
-})
-const platformUpdatedText = computed(() => {
-  const updatedAt = adminMetrics.value.updatedAt || personalMetrics.value.updatedAt
-  if (!updatedAt) return '待刷新'
-  return new Date(updatedAt).toLocaleTimeString('zh-CN', { hour12: false })
-})
+const codexTone = computed(() => codexStatus.value === 'error' ? 'danger' : codexStatus.value === 'running' ? 'active' : codexStatus.value === 'queued' ? 'queued' : '')
+const codexStatusLabel = computed(() => ({ running: '运行中', queued: '排队中', idle: '空闲', error: '异常', unknown: '未提供' }[codexStatus.value]))
+const codexHeadline = computed(() => ({ running: '正在处理 Codex 任务', queued: '任务等待调度', idle: '当前没有活动任务', error: 'Codex 任务异常', unknown: '等待任务状态' }[codexStatus.value]))
+const codexDetail = computed(() => codexStatus.value === 'unknown' ? '当前部署未返回任务队列指标' : `${endpointLabel.value} · 低频采样`)
 const updateBusy = computed(() => updateState.value === 'checking' || updateState.value === 'downloading')
 
+let collapseTimer: number | null = null
+let hoverExpandTimer: number | null = null
+
+function emptyAdminMetrics(): AdminMonitorMetrics {
+  return {
+    todayTotalTokens: null,
+    todayTotalCost: null,
+    totalTokens: null,
+    totalActualCost: null,
+    totalAccountCost: null,
+    totalStandardCost: null,
+    averageDurationMs: null,
+    activeUsers: null,
+    poolRemainingPercent: null,
+    poolLatestResetAt: null,
+    poolResetItems: [],
+    poolSevenDayRemainingPercent: null,
+    poolSevenDayLatestResetAt: null,
+    poolSevenDayResetItems: [],
+    poolAccounts: null,
+    poolCapacity: null,
+    poolAccountDetails: [],
+    userRanking: [],
+    serverStatus: 'unknown',
+    serverLatencyMs: null,
+    serverCpuPercent: null,
+    serverMemoryPercent: null,
+    serverUptimeSeconds: null,
+    codexStatus: 'unknown',
+    activeCodexTasks: null,
+    queuedCodexTasks: null,
+    updatedAt: null
+  }
+}
+
+function createDraft(source: AppSettings): AppSettings {
+  return { ...defaultSettings, ...source, poolGroupNames: [...(source.poolGroupNames ?? [])] }
+}
+
+async function resizeWidget(nextExpanded: boolean) {
+  if (!('__TAURI_INTERNALS__' in window)) return
+  try {
+    const { invoke } = await import('@tauri-apps/api/core')
+    await invoke('set_widget_expanded', { expanded: nextExpanded })
+    return
+  } catch {
+    // Older builds do not have the command; use the window API as a fallback.
+  }
+  const api = await loadTauriWindowApi()
+  if (!api) return
+  try {
+    const currentWindow = api.getCurrentWindow()
+    const { LogicalSize } = await import('@tauri-apps/api/dpi')
+    await currentWindow.setSize(new LogicalSize(nextExpanded ? 314 : 166, nextExpanded ? 382 : 50))
+  } catch { return }
+}
+
+async function resizeSetupWindow() {
+  if (!('__TAURI_INTERNALS__' in window)) return
+  try {
+    const { invoke } = await import('@tauri-apps/api/core')
+    await invoke('set_widget_setup')
+    return
+  } catch {
+    // Fall back to the window API for older local builds.
+  }
+  const api = await loadTauriWindowApi()
+  if (!api) return
+  try {
+    const { LogicalSize } = await import('@tauri-apps/api/dpi')
+    await api.getCurrentWindow().setSize(new LogicalSize(390, 440))
+  } catch { return }
+}
+
+async function resizeSettingsWindow() {
+  if (!('__TAURI_INTERNALS__' in window)) return
+  try {
+    const { invoke } = await import('@tauri-apps/api/core')
+    await invoke('set_widget_settings')
+    return
+  } catch {
+    // Fall back to the window API for older local builds.
+  }
+  const api = await loadTauriWindowApi()
+  if (!api) return
+  try {
+    const { LogicalSize } = await import('@tauri-apps/api/dpi')
+    await api.getCurrentWindow().setSize(new LogicalSize(390, 560))
+  } catch { return }
+}
+
+async function applyAlwaysOnTop(enabled: boolean) {
+  if (!('__TAURI_INTERNALS__' in window)) return
+  try {
+    const { invoke } = await import('@tauri-apps/api/core')
+    await invoke('set_widget_always_on_top', { enabled })
+    return
+  } catch {
+    // Keep compatibility with a development build that predates the command.
+  }
+  const api = await loadTauriWindowApi()
+  if (!api) return
+  try { await api.getCurrentWindow().setAlwaysOnTop(enabled) } catch { return }
+}
+
+function syncWidgetPreferences() {
+  stayExpanded.value = settings.value.stayExpanded === true
+  alwaysOnTop.value = settings.value.alwaysOnTop !== false
+  expanded.value = configured.value && stayExpanded.value
+  if (configured.value) void resizeWidget(expanded.value)
+  else void resizeSetupWindow()
+  void applyAlwaysOnTop(alwaysOnTop.value)
+}
+
+function expandWidget() {
+  if (!configured.value) return
+  if (hoverExpandTimer !== null) window.clearTimeout(hoverExpandTimer)
+  hoverExpandTimer = null
+  if (collapseTimer !== null) window.clearTimeout(collapseTimer)
+  collapseTimer = null
+  expanded.value = true
+  void resizeWidget(true)
+}
+
+function collapseWidget() {
+  if (stayExpanded.value) return
+  if (collapseTimer !== null) window.clearTimeout(collapseTimer)
+  expanded.value = false
+  void resizeWidget(false)
+}
+
+function handleHover(value: boolean) {
+  hovered.value = value
+  if (hoverExpandTimer !== null) window.clearTimeout(hoverExpandTimer)
+  hoverExpandTimer = null
+  if (collapseTimer !== null) window.clearTimeout(collapseTimer)
+  collapseTimer = null
+  if (value) {
+    if (configured.value) {
+      // Let a click finish against the compact orb before the native window
+      // moves left to make room for the expanded surface.
+      hoverExpandTimer = window.setTimeout(() => {
+        hoverExpandTimer = null
+        if (hovered.value) expandWidget()
+      }, 120)
+    }
+    return
+  }
+  if (!configured.value || stayExpanded.value) return
+  collapseTimer = window.setTimeout(() => {
+    collapseTimer = null
+    if (!hovered.value) collapseWidget()
+  }, 180)
+}
+
+function toggleStayExpanded() {
+  const next = !stayExpanded.value
+  stayExpanded.value = next
+  const saved = saveSettings({ ...settings.value, stayExpanded: next })
+  settings.value = saved
+  Object.assign(draft, createDraft(saved))
+  if (next) expandWidget()
+  else if (!hovered.value) collapseWidget()
+}
+
+async function toggleAlwaysOnTop() {
+  const next = !alwaysOnTop.value
+  alwaysOnTop.value = next
+  const saved = saveSettings({ ...settings.value, alwaysOnTop: next })
+  settings.value = saved
+  Object.assign(draft, createDraft(saved))
+  await applyAlwaysOnTop(next)
+}
+
 async function refreshAll() {
-  if (!hasAdmin.value && !hasPersonal.value) return
+  if (!configured.value || refreshInFlight || isSettingsView || isUpdaterView || isTrayMenuView) return
+  refreshInFlight = true
   loading.value = true
   errorMessage.value = ''
   const errors: string[] = []
-  let successCount = 0
   try {
     if (hasAdmin.value) {
       try {
-        await refreshAdmin()
-        successCount += 1
+        adminMetrics.value = await fetchAdminMonitorMetrics({
+          baseUrl: settings.value.sub2apiBaseUrl,
+          apiKey: settings.value.adminApiKey,
+          poolGroupNames: settings.value.poolGroupNames,
+          lightweight: true
+        })
       } catch (error) {
-        errors.push(error instanceof Error ? error.message : '管理员 API 请求失败')
+        errors.push(errorMessageOf(error, '管理员接口请求失败'))
       }
     }
-    if (hasPersonal.value) {
+    if (!hasAdmin.value && hasPersonal.value) {
       try {
-        await refreshPersonal()
-        successCount += 1
+        personalMetrics.value = await fetchSub2apiMetrics({ baseUrl: settings.value.sub2apiBaseUrl, token: settings.value.personalToken })
       } catch (error) {
-        errors.push(error instanceof Error ? error.message : '个人 JWT 请求失败')
+        errors.push(errorMessageOf(error, '个人接口请求失败'))
       }
     }
-    if (errors.length > 0 && successCount === 0) {
-      errorMessage.value = errors[0] || '请求失败'
-    }
+    if (errors.length > 0) errorMessage.value = errors[0]
   } finally {
     loading.value = false
+    refreshInFlight = false
   }
 }
 
-async function refreshPersonal() {
-  if (!hasPersonal.value) return
-  personalMetrics.value = await fetchSub2apiMetrics({
-    baseUrl: settings.value.sub2apiBaseUrl,
-    token: settings.value.personalToken
-  })
+function scheduleRefresh(delayMs = 0) {
+  stopRefresh()
+  if (!configured.value || isSettingsView || isUpdaterView || isTrayMenuView || document.visibilityState === 'hidden') return
+  const generation = refreshGeneration
+  const run = async () => {
+    if (generation !== refreshGeneration) return
+    timer = null
+    await refreshAll()
+    if (generation === refreshGeneration && configured.value && document.visibilityState !== 'hidden') {
+      timer = window.setTimeout(run, Math.max(10, settings.value.refreshSeconds) * 1000)
+    }
+  }
+  if (delayMs <= 0) void run()
+  else timer = window.setTimeout(run, delayMs)
 }
 
-async function refreshAdmin() {
-  if (!hasAdmin.value) return
-  adminMetrics.value = await fetchAdminMonitorMetrics({
-    baseUrl: settings.value.sub2apiBaseUrl,
-    apiKey: settings.value.adminApiKey,
-    poolGroupNames: settings.value.poolGroupNames
-  })
-  // 刷新指标时保留已展开的明细，避免手动或定时刷新打断当前查看。
-  if (rankingView.value === 'models') void loadModelRanking()
+function stopRefresh() {
+  refreshGeneration += 1
+  if (timer !== null) window.clearTimeout(timer)
+  timer = null
 }
 
-function showUserRanking(mode: 'tokens' | 'cost') {
-  rankingView.value = 'users'
-  rankingMode.value = mode
-  void resizePlatformWindowToContent()
+function syncRefreshVisibility() {
+  if (document.visibilityState === 'hidden') stopRefresh()
+  else if (configured.value) scheduleRefresh(0)
 }
 
-function toggleRanking() {
-  rankingExpanded.value = !rankingExpanded.value
-}
-
-async function showModelRanking() {
-  rankingView.value = 'models'
-  modelRankingSort.value = 'tokens'
-  if (modelRankingState.value === 'idle') await loadModelRanking()
-  void resizePlatformWindowToContent()
-}
-
-async function loadModelRanking() {
-  if (!hasAdmin.value || modelRankingState.value === 'loading') return
-  const refreshEpoch = ++modelRankingRefreshEpoch
-  modelRankingState.value = 'loading'
+function validateDraft(): boolean {
+  formError.value = ''
+  const url = draft.sub2apiBaseUrl.trim()
+  if (!url) {
+    formError.value = '请填写服务器地址'
+    return false
+  }
   try {
-    const items = await fetchAdminModelUsageRanking({
-      baseUrl: settings.value.sub2apiBaseUrl,
-      apiKey: settings.value.adminApiKey
-    })
-    if (refreshEpoch !== modelRankingRefreshEpoch) return
-    modelRanking.value = items
-    modelRankingState.value = 'ready'
+    const parsed = new URL(url)
+    if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error()
   } catch {
-    if (refreshEpoch !== modelRankingRefreshEpoch) return
-    modelRankingState.value = 'error'
-  } finally {
-    void resizePlatformWindowToContent()
+    formError.value = '服务器地址需要以 http:// 或 https:// 开头'
+    return false
   }
-}
-
-function modelRankingKey(model: string): string {
-  return model
-}
-
-function isModelRankingExpanded(model: string): boolean {
-  return expandedModelRankingKeys.value.includes(modelRankingKey(model))
-}
-
-async function toggleModelRanking(model: string) {
-  const key = modelRankingKey(model)
-  if (isModelRankingExpanded(model)) {
-    expandedModelRankingKeys.value = expandedModelRankingKeys.value.filter((value) => value !== key)
-    void resizePlatformWindowToContent()
-    return
+  if (!draft.adminApiKey.trim() && !draft.personalToken.trim()) {
+    formError.value = '至少填写管理员 API Key 或个人 Token'
+    return false
   }
-
-  expandedModelRankingKeys.value = [...expandedModelRankingKeys.value, key]
-  if (modelRankingUserState.value[key]) {
-    void resizePlatformWindowToContent()
-    return
-  }
-
-  const refreshEpoch = modelRankingRefreshEpoch
-  modelRankingUserState.value = { ...modelRankingUserState.value, [key]: 'loading' }
-  void resizePlatformWindowToContent()
-  try {
-    const users = await fetchAdminModelUserUsage({
-      baseUrl: settings.value.sub2apiBaseUrl,
-      apiKey: settings.value.adminApiKey
-    }, model, adminMetrics.value.userIdentities ?? [])
-    if (refreshEpoch === modelRankingRefreshEpoch) {
-      modelRankingUsers.value = { ...modelRankingUsers.value, [key]: users }
-      modelRankingUserState.value = { ...modelRankingUserState.value, [key]: 'ready' }
-    }
-  } catch {
-    if (refreshEpoch === modelRankingRefreshEpoch) {
-      modelRankingUserState.value = { ...modelRankingUserState.value, [key]: 'error' }
-    }
-  } finally {
-    void resizePlatformWindowToContent()
-  }
+  return true
 }
 
-function rankingUserKey(item: UserTodayUsageRankItem): string {
-  return item.userId === null ? item.displayName : String(item.userId)
-}
-
-function isRankingUserExpanded(item: UserTodayUsageRankItem): boolean {
-  return expandedRankingUserKeys.value.includes(rankingUserKey(item))
-}
-
-async function toggleRankingUser(item: UserTodayUsageRankItem) {
-  const key = rankingUserKey(item)
-  if (isRankingUserExpanded(item)) {
-    expandedRankingUserKeys.value = expandedRankingUserKeys.value.filter((value) => value !== key)
-    void resizePlatformWindowToContent()
-    return
-  }
-
-  expandedRankingUserKeys.value = [...expandedRankingUserKeys.value, key]
-  if (item.userId === null || rankingModelUsageState.value[key]) {
-    void resizePlatformWindowToContent()
-    return
-  }
-
-  rankingModelUsageState.value = { ...rankingModelUsageState.value, [key]: 'loading' }
-  const requestEpoch = (rankingModelUsageRequestEpochs.get(key) ?? 0) + 1
-  rankingModelUsageRequestEpochs.set(key, requestEpoch)
-  void resizePlatformWindowToContent()
-  try {
-    const models = await fetchAdminUserModelUsage({
-      baseUrl: settings.value.sub2apiBaseUrl,
-      apiKey: settings.value.adminApiKey
-    }, item.userId)
-    if (rankingModelUsageRequestEpochs.get(key) === requestEpoch) {
-      rankingModelUsage.value = { ...rankingModelUsage.value, [key]: models }
-      rankingModelUsageState.value = { ...rankingModelUsageState.value, [key]: 'ready' }
-    }
-  } catch {
-    if (rankingModelUsageRequestEpochs.get(key) === requestEpoch) {
-      rankingModelUsageState.value = { ...rankingModelUsageState.value, [key]: 'error' }
-    }
-  } finally {
-    void resizePlatformWindowToContent()
-  }
-}
-
-function toggleAccountDetails() {
-  accountDetailsExpanded.value = !accountDetailsExpanded.value
-}
-
-function loadAccountStatusFilter(): AccountStatusFilter {
-  const storedStatus = localStorage.getItem(accountFilterStorageKey)
-  return storedStatus === 'normal' || storedStatus === 'limited' || storedStatus === 'error' || storedStatus === 'all'
-    ? storedStatus
-    : 'all'
-}
-
-function setAccountStatusFilter(status: AccountStatusFilter) {
-  selectedAccountStatus.value = status
-  localStorage.setItem(accountFilterStorageKey, status)
-}
-
-function formatAccountWindowWidth(value: number | null): string {
-  if (value === null || Number.isNaN(value)) return '0%'
-  return `${Math.min(100, Math.max(0, Math.round(value)))}%`
-}
-
-function formatAccountWindowClass(value: number | null): '' | 'warning' | 'danger' {
-  if (value === null || Number.isNaN(value)) return ''
-  const used = Math.min(100, Math.max(0, value))
-  if (used >= 100) return 'danger'
-  if (used > 80) return 'warning'
-  return ''
-}
-
-function formatRequestCount(value: number | null): string {
-  if (value === null || Number.isNaN(value)) return '--'
-  return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 0 }).format(value)
-}
-
-function formatDuration(value: number | null): string {
-  if (value === null || Number.isNaN(value)) return '--'
-  if (value >= 1_000) {
-    const seconds = (value / 1_000).toFixed(2).replace(/\.?0+$/, '')
-    return `${seconds}s`
-  }
-  return `${Math.round(value)}ms`
-}
-
-function formatCompactTokenCount(value: number | null): string {
-  if (value === null || Number.isNaN(value)) return '--'
-  if (value >= 1_000_000_000) return `${formatCompactNumber(value / 1_000_000_000)}B`
-  if (value >= 1_000_000) return `${formatCompactNumber(value / 1_000_000)}M`
-  if (value >= 1_000) return `${formatCompactNumber(value / 1_000)}K`
-  return formatCompactNumber(value)
-}
-
-function formatCompactNumber(value: number): string {
-  const text = value.toFixed(1)
-  return text.endsWith('.0') ? text.slice(0, -2) : text
-}
-
-function sortUserRanking(items: UserTodayUsageRankItem[], mode: 'tokens' | 'cost'): UserTodayUsageRankItem[] {
-  return [...items].sort((left, right) => {
-    if (mode === 'cost') {
-      const costDiff = (right.actualCost ?? 0) - (left.actualCost ?? 0)
-      if (costDiff !== 0) return costDiff
-    }
-
-    const tokenDiff = right.tokens - left.tokens
-    if (tokenDiff !== 0) return tokenDiff
-    return (left.userId ?? 0) - (right.userId ?? 0)
+function saveDraft() {
+  if (!validateDraft()) return
+  const wasConfigured = configured.value
+  const next = saveSettings({
+    ...draft,
+    sub2apiBaseUrl: draft.sub2apiBaseUrl.trim().replace(/\/+$/, ''),
+    adminApiKey: draft.adminApiKey.trim(),
+    personalToken: draft.personalToken.trim(),
+    personalFloatingEnabled: draft.personalToken.trim() !== '',
+    poolGroupName: draft.poolGroupName.trim(),
+    poolGroupNames: draft.poolGroupName.trim() ? [draft.poolGroupName.trim()] : [],
+    refreshSeconds: Number(draft.refreshSeconds)
   })
-}
-
-function sortedRankingModelUsage(item: UserTodayUsageRankItem): UserModelUsageItem[] {
-  return sortModelUsage(rankingModelUsage.value[rankingUserKey(item)] ?? [], rankingMode.value)
-}
-
-function sortModelUsage(items: UserModelUsageItem[], mode: 'tokens' | 'cost'): UserModelUsageItem[] {
-  return [...items].sort((left, right) => {
-    if (mode === 'cost') {
-      const costDiff = (right.actualCost ?? 0) - (left.actualCost ?? 0)
-      if (costDiff !== 0) return costDiff
-    }
-
-    const tokenDiff = right.tokens - left.tokens
-    if (tokenDiff !== 0) return tokenDiff
-    return left.model.localeCompare(right.model)
-  })
-}
-
-function sortModelRanking(items: ModelUsageRankItem[], mode: ModelRankingSort): ModelUsageRankItem[] {
-  return [...items].sort((left, right) => compareUsageRows(left, right, mode, left.model, right.model))
-}
-
-function sortedModelRankingUsers(model: string): ModelUserUsageItem[] {
-  return [...(modelRankingUsers.value[modelRankingKey(model)] ?? [])]
-    .sort((left, right) => compareUsageRows(left, right, modelRankingSort.value, left.displayName, right.displayName))
-}
-
-function compareUsageRows(
-  left: Pick<ModelUsageRankItem, 'requests' | 'tokens' | 'actualCost'>,
-  right: Pick<ModelUsageRankItem, 'requests' | 'tokens' | 'actualCost'>,
-  mode: ModelRankingSort,
-  leftName: string,
-  rightName: string
-): number {
-  if (mode === 'requests') {
-    const requestDiff = right.requests - left.requests
-    if (requestDiff !== 0) return requestDiff
+  settings.value = next
+  Object.assign(draft, createDraft(next))
+  stayExpanded.value = next.stayExpanded === true
+  alwaysOnTop.value = next.alwaysOnTop !== false
+  if (!wasConfigured) {
+    expanded.value = stayExpanded.value
+    void resizeWidget(expanded.value)
   }
-  if (mode === 'cost') {
-    const costDiff = (right.actualCost ?? 0) - (left.actualCost ?? 0)
-    if (costDiff !== 0) return costDiff
+  saveMessage.value = '配置已保存'
+  formError.value = ''
+  void notifySettingsChanged()
+  scheduleRefresh(0)
+  if (!isSettingsView && !showInlineSettings.value && wasConfigured) {
+    expanded.value = next.stayExpanded === true
+    void resizeWidget(expanded.value)
   }
-  const tokenDiff = right.tokens - left.tokens
-  if (tokenDiff !== 0) return tokenDiff
-  return leftName.localeCompare(rightName)
+  if (isSettingsView || showInlineSettings.value) window.setTimeout(() => closeWindow(), 320)
 }
 
-function formatAccountWindowText(item: PoolAccountUsageWindow): string {
-  const used = Math.round(item.usedPercent)
-  const resetRemain = formatUsageWindowRemain(item.resetAt)
-  return resetRemain === '--' ? `使用量 ${used}%` : `使用量 ${used}% · ${resetRemain}`
-}
-
-function formatUsageWindowRemain(value: string | null): string {
-  if (!value) return '--'
-  const resetAt = Date.parse(value)
-  if (!Number.isFinite(resetAt)) return '--'
-  const remainingMs = resetAt - Date.now()
-  if (remainingMs <= 0) return '现在'
-  const totalMinutes = Math.ceil(remainingMs / 60000)
-  const days = Math.floor(totalMinutes / 1440)
-  const hours = Math.floor((totalMinutes % 1440) / 60)
-  const minutes = totalMinutes % 60
-  if (days > 0) return hours > 0 ? `${days}d ${hours}h` : `${days}d`
-  if (hours > 0) return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`
-  return `${minutes}m`
-}
-
-async function initUpdaterView() {
-  if (!isUpdaterView) return
-  await initAppVersion()
-
-  if ('__TAURI_INTERNALS__' in window) {
-    try {
-      const { listen } = await import('@tauri-apps/api/event')
-      await listen('token-orb-check-update', () => {
-        void checkForAppUpdate()
-      })
-    } catch {
-      // 事件监听失败时仍允许手动点击检查。
-    }
-  }
-
-  await checkForAppUpdate()
-}
-
-async function initAppVersion() {
+async function testDraft() {
+  if (!validateDraft()) return
+  testing.value = true
+  formError.value = ''
   try {
-    const { getVersion } = await import('@tauri-apps/api/app')
-    appVersion.value = await getVersion()
-  } catch {
-    appVersion.value = '0.1.0'
-  }
-}
-
-async function checkForAppUpdate() {
-  updateState.value = 'checking'
-  updateMessage.value = '正在检查更新...'
-  updateVersion.value = ''
-  updateBody.value = ''
-  downloadPercent.value = null
-  availableUpdate = null
-
-  if (!('__TAURI_INTERNALS__' in window)) {
-    updateState.value = 'error'
-    updateMessage.value = 'Web 调试模式不支持在线更新，请在桌面应用中检查。'
-    return
-  }
-
-  try {
-    const { check } = await import('@tauri-apps/plugin-updater')
-    const update = await check()
-    if (!update) {
-      updateState.value = 'latest'
-      updateMessage.value = '当前已经是最新版本。'
-      return
+    if (draft.adminApiKey.trim()) {
+      await fetchAdminMonitorMetrics({ baseUrl: draft.sub2apiBaseUrl, apiKey: draft.adminApiKey, poolGroupNames: [], lightweight: true })
+    } else {
+      await fetchSub2apiMetrics({ baseUrl: draft.sub2apiBaseUrl, token: draft.personalToken })
     }
-
-    availableUpdate = update
-    updateVersion.value = update.version
-    updateBody.value = update.body || '暂无更新说明。'
-    updateState.value = 'available'
-    updateMessage.value = '发现新版本，可以立即更新。'
+    saveMessage.value = '连接正常，可以保存'
   } catch (error) {
-    updateState.value = 'error'
-    updateMessage.value = error instanceof Error ? error.message : '检查更新失败'
+    formError.value = errorMessageOf(error, '连接测试失败')
+  } finally {
+    testing.value = false
   }
 }
 
-async function checkPlatformUpdate() {
-  if ((!isPlatformView && !isTrayMenuView) || !('__TAURI_INTERNALS__' in window)) return
-  try {
-    const { check } = await import('@tauri-apps/plugin-updater')
-    platformUpdateAvailable.value = (await check()) !== null
-  } catch {
-    platformUpdateAvailable.value = false
+async function openSettings() {
+  if (!isSettingsView) {
+    if (!showInlineSettings.value) settingsReturnExpanded.value = expanded.value
+    showInlineSettings.value = true
+    stopRefresh()
+    await resizeSettingsWindow()
   }
+}
+
+async function closeWindow() {
+  if (showInlineSettings.value) {
+    showInlineSettings.value = false
+    if (configured.value) {
+      expanded.value = stayExpanded.value || settingsReturnExpanded.value
+      await resizeWidget(expanded.value)
+    } else {
+      await resizeSetupWindow()
+    }
+    scheduleRefresh(0)
+    return
+  }
+  if (!isSettingsView && !isUpdaterView && !isTrayMenuView) stopRefresh()
+  try {
+    const api = await loadTauriWindowApi()
+    if (api) {
+      const currentWindow = api.getCurrentWindow()
+      if (isSettingsView || isUpdaterView) await currentWindow.close()
+      else await currentWindow.hide()
+    }
+    else if (!isSettingsView) window.history.back()
+  } catch {
+    return
+  }
+}
+
+async function startWindowDrag(event?: MouseEvent) {
+  if (event && event.button !== 0) return
+  const api = await loadTauriWindowApi()
+  if (!api) return
+  try { await api.getCurrentWindow().startDragging() } catch { return }
+}
+
+function handleSurfaceMouseDown(event: MouseEvent) {
+  if (event.button !== 0) return
+  const target = event.target instanceof HTMLElement ? event.target : null
+  if (target?.closest('button, input, textarea, select, a')) return
+  event.preventDefault()
+  void startWindowDrag(event)
 }
 
 async function runTrayCommand(command: 'monitor' | 'settings' | 'update' | 'quit') {
@@ -1166,164 +597,65 @@ async function runTrayCommand(command: 'monitor' | 'settings' | 'update' | 'quit
     const { invoke } = await import('@tauri-apps/api/core')
     await invoke('tray_command', { command })
   } catch {
-    // 菜单命令失败时保留窗口，方便用户重试。
-  }
-}
-
-async function resizePlatformWindowToContent() {
-  if (!isPlatformView) return
-  await nextTick()
-  const height = monitorPanelRef.value?.scrollHeight
-  if (!height) return
-  try {
-    const api = await loadTauriWindowApi()
-    if (!api) return
-    await api.getCurrentWindow().setSize(new api.LogicalSize(410, height))
-  } catch {
     return
   }
 }
 
-async function resizeUpdaterWindowToContent() {
-  if (!isUpdaterView) return
-  await nextTick()
-  const panelHeight = updatePanelRef.value?.scrollHeight
-  if (!panelHeight) return
+function performanceWidth(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return '0%'
+  return `${Math.min(100, Math.max(0, value))}%`
+}
+
+function performanceTone(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return 'unknown'
+  if (value >= 85) return 'danger'
+  if (value >= 65) return 'warning'
+  return 'healthy'
+}
+
+function formatPercent(value: number | null | undefined): string {
+  return value == null || Number.isNaN(value) ? '--' : `${Math.round(value)}%`
+}
+
+function formatUptime(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return '--'
+  const totalMinutes = Math.floor(value / 60)
+  const days = Math.floor(totalMinutes / 1440)
+  const hours = Math.floor((totalMinutes % 1440) / 60)
+  const minutes = totalMinutes % 60
+  if (days > 0) return `${days}d ${hours}h`
+  if (hours > 0) return `${hours}h ${minutes}m`
+  return `${minutes}m`
+}
+
+function taskCount(value: number | null | undefined): string {
+  return value == null || Number.isNaN(value) ? '--' : String(Math.max(0, Math.round(value)))
+}
+
+function compactTokenCount(value: number | null): string {
+  if (value === null || Number.isNaN(value)) return '--'
+  const absolute = Math.abs(value)
+  if (absolute >= 1_000_000_000) return `${trimCompact(value / 1_000_000_000, absolute >= 100_000_000_000 ? 0 : 1)}B`
+  if (absolute >= 1_000_000) return `${trimCompact(value / 1_000_000, absolute >= 100_000_000 ? 0 : absolute >= 10_000_000 ? 1 : 2)}M`
+  if (absolute >= 1_000) return `${trimCompact(value / 1_000, absolute >= 100_000 ? 0 : absolute >= 10_000 ? 1 : 2)}K`
+  return String(Math.round(value))
+}
+
+function trimCompact(value: number, decimals: number): string {
+  return value.toFixed(decimals).replace(/\.0+$|(?<=\.[0-9])0+$/, '')
+}
+
+function compactEndpoint(value: string): string {
   try {
-    const api = await loadTauriWindowApi()
-    if (!api) return
-    await api.getCurrentWindow().setSize(new api.LogicalSize(420, panelHeight + 36))
+    const url = new URL(value)
+    return `${url.hostname}${url.port ? `:${url.port}` : ''}`
   } catch {
-    return
+    return value.replace(/^https?:\/\//, '').slice(0, 28)
   }
 }
 
-async function openUpdateWindow() {
-  if (!('__TAURI_INTERNALS__' in window)) return
-  try {
-    const { emit } = await import('@tauri-apps/api/event')
-    await emit('token-orb-open-update')
-  } catch {
-    // 更新窗口打开失败时保留平台页，不影响监控数据展示。
-  }
-}
-
-async function openReleaseNotes() {
-  const version = updateVersion.value || appVersion.value
-  const releaseUrl = `https://github.com/tangjiale/token-orb/releases/tag/v${version}`
-  try {
-    const { openUrl } = await import('@tauri-apps/plugin-opener')
-    await openUrl(releaseUrl)
-  } catch {
-    window.open(releaseUrl, '_blank', 'noopener,noreferrer')
-  }
-}
-
-async function installAppUpdate() {
-  if (!availableUpdate) return
-  updateState.value = 'downloading'
-  updateMessage.value = '正在下载更新...'
-  downloadPercent.value = 0
-  let downloaded = 0
-  let total = 0
-
-  try {
-    await availableUpdate.download((event) => {
-      if (event.event === 'Started') {
-        total = event.data.contentLength ?? 0
-        downloaded = 0
-      }
-      if (event.event === 'Progress') {
-        downloaded += event.data.chunkLength
-        downloadPercent.value = total > 0 ? Math.min(100, Math.round((downloaded / total) * 100)) : null
-      }
-      if (event.event === 'Finished') {
-        downloadPercent.value = 100
-        updateMessage.value = '下载完成，正在安装...'
-      }
-    })
-    await availableUpdate.install()
-    updateState.value = 'installed'
-    updateMessage.value = '更新已安装，点击重启完成更新。'
-  } catch (error) {
-    updateState.value = 'error'
-    updateMessage.value = error instanceof Error ? error.message : '更新安装失败'
-  }
-}
-
-async function restartApp() {
-  const { relaunch } = await import('@tauri-apps/plugin-process')
-  await relaunch()
-}
-
-function saveDraft() {
-  addPoolGroupName()
-  settings.value = saveSettings({ ...draft })
-  syncSettingsDraft(settings.value)
-  personalTokenTestMessage.value = ''
-  personalTokenTestState.value = ''
-  showSaveMessage()
-  scheduleRefresh()
-  void refreshAll()
-  void notifySettingsChanged()
-}
-
-async function testPersonalToken() {
-  const baseUrl = draft.sub2apiBaseUrl.trim()
-  const token = draft.personalToken.trim()
-  personalTokenTestMessage.value = ''
-  personalTokenTestState.value = ''
-  if (!baseUrl) {
-    personalTokenTestState.value = 'error'
-    personalTokenTestMessage.value = '请先填写 Base URL'
-    return
-  }
-  if (!token) {
-    personalTokenTestState.value = 'error'
-    personalTokenTestMessage.value = '请先填写个人 JWT'
-    return
-  }
-
-  personalTokenTesting.value = true
-  try {
-    await fetchSub2apiMetrics({ baseUrl, token })
-    personalTokenTestState.value = 'success'
-    personalTokenTestMessage.value = '个人 JWT 正常'
-  } catch (error) {
-    personalTokenTestState.value = 'error'
-    personalTokenTestMessage.value = formatErrorMessage(error, '个人 JWT 测试失败')
-  } finally {
-    personalTokenTesting.value = false
-  }
-}
-
-function formatErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message.trim() !== '') return error.message
-  if (typeof error === 'string' && error.trim() !== '') return error.trim()
-  return fallback
-}
-
-function showSaveMessage() {
-  saveMessage.value = '配置已保存'
-  if (saveMessageTimer !== null) window.clearTimeout(saveMessageTimer)
-  saveMessageTimer = window.setTimeout(() => {
-    saveMessage.value = ''
-    saveMessageTimer = null
-  }, 2400)
-}
-
-function syncExternalSettingsChange(event: StorageEvent) {
-  if (isUpdaterView) return
-  if (event.key !== settingsStorageKey || event.newValue === null) return
-  applyLatestSettings()
-}
-
-function applyLatestSettings() {
-  settings.value = loadSettings()
-  syncSettingsDraft(settings.value)
-  scheduleRefresh()
-  void refreshAll()
-  void initFloatingWindow()
+function errorMessageOf(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message.trim() ? error.message : typeof error === 'string' && error.trim() ? error : fallback
 }
 
 async function notifySettingsChanged() {
@@ -1331,180 +663,7 @@ async function notifySettingsChanged() {
   try {
     const { emit } = await import('@tauri-apps/api/event')
     await emit('token-orb-settings-updated')
-  } catch {
-    // 浏览器 storage 事件仍作为非桌面环境的同步兜底。
-  }
-}
-
-async function listenForSettingsChanges() {
-  if (isSettingsView || isUpdaterView || !('__TAURI_INTERNALS__' in window)) return
-  try {
-    const { listen } = await import('@tauri-apps/api/event')
-    unlistenSettingsChanged = await listen('token-orb-settings-updated', applyLatestSettings)
-  } catch {
-    // Tauri 事件不可用时保留浏览器 storage 事件同步。
-  }
-}
-
-function createSettingsDraft(source: AppSettings): AppSettings {
-  return {
-    ...source,
-    poolGroupNames: [...source.poolGroupNames]
-  }
-}
-
-function syncSettingsDraft(source: AppSettings) {
-  Object.assign(draft, createSettingsDraft(source))
-}
-
-function addPoolGroupName() {
-  const name = poolGroupNameInput.value.trim()
-  if (!name) return
-  if (!draft.poolGroupNames.includes(name)) {
-    draft.poolGroupNames.push(name)
-  }
-  draft.poolGroupName = draft.poolGroupNames[0] ?? ''
-  poolGroupNameInput.value = ''
-}
-
-function removePoolGroupName(name: string) {
-  draft.poolGroupNames = draft.poolGroupNames.filter((item) => item !== name)
-  draft.poolGroupName = draft.poolGroupNames[0] ?? ''
-}
-
-function removeLastPoolGroupNameWhenEmpty() {
-  if (poolGroupNameInput.value !== '' || draft.poolGroupNames.length === 0) return
-  draft.poolGroupNames.pop()
-  draft.poolGroupName = draft.poolGroupNames[0] ?? ''
-}
-
-function focusPoolGroupInput() {
-  poolGroupInputRef.value?.focus()
-}
-
-function scheduleRefresh() {
-  if (timer !== null) window.clearInterval(timer)
-  timer = window.setInterval(refreshAll, settings.value.refreshSeconds * 1000)
-}
-
-async function startWindowDrag() {
-  if (isSettingsView || isPlatformView) return
-  const api = await loadTauriWindowApi()
-  if (!api) return
-  await api.getCurrentWindow().startDragging()
-}
-
-async function startCollapsedOrbDrag(event: MouseEvent) {
-  if (event.button !== 0) return
-  collapsedDragStarted = false
-  collapsedDragStartAt = Date.now()
-  const markDragged = () => {
-    collapsedDragStarted = true
-  }
-  window.addEventListener('mousemove', markDragged, { once: true })
-  window.setTimeout(() => {
-    window.removeEventListener('mousemove', markDragged)
-  }, 220)
-  await startWindowDrag()
-}
-
-function toggleCollapsedOrb() {
-  if (collapsedDragStarted || Date.now() - collapsedDragStartAt > 220) {
-    collapsedDragStarted = false
-    return
-  }
-  void togglePersonalCollapsed()
-}
-
-async function togglePersonalCollapsed() {
-  const api = await loadTauriWindowApi()
-  if (!api) {
-    personalCollapsed.value = !personalCollapsed.value
-    return
-  }
-
-  const appWindow = api.getCurrentWindow()
-  const state = loadFloatingState()
-  const monitor = await api.currentMonitor()
-  const monitorX = monitor?.position.x ?? 0
-  const monitorWidth = monitor?.size.width ?? 1440
-  const scaleFactor = await appWindow.scaleFactor()
-  const expandedPhysicalWidth = expandedSize.width * scaleFactor
-  const collapsedPhysicalWidth = collapsedSize.width * scaleFactor
-  const position = await appWindow.outerPosition()
-
-  if (!personalCollapsed.value) {
-    const edgeX = position.x + expandedPhysicalWidth / 2 < monitorX + monitorWidth / 2 ? monitorX : monitorX + monitorWidth - collapsedPhysicalWidth
-    await appWindow.setSize(new api.LogicalSize(collapsedSize.width, collapsedSize.height))
-    await appWindow.setPosition(new api.PhysicalPosition(edgeX, position.y))
-    personalCollapsed.value = true
-    saveFloatingState({ ...state, collapsed: true, expandedX: position.x, expandedY: position.y, x: edgeX, y: position.y })
-    return
-  }
-
-  const fallbackX = position.x <= monitorX + 4 ? monitorX : monitorX + monitorWidth - expandedPhysicalWidth
-  const nextX = state.expandedX ?? fallbackX
-  const nextY = state.expandedY ?? position.y
-  await appWindow.setSize(new api.LogicalSize(expandedSize.width, expandedSize.height))
-  await appWindow.setPosition(new api.PhysicalPosition(nextX, nextY))
-  personalCollapsed.value = false
-  saveFloatingState({ ...state, collapsed: false, x: nextX, y: nextY })
-}
-
-async function hidePersonalOrb() {
-  const api = await loadTauriWindowApi()
-  if (!api) return
-  await api.getCurrentWindow().hide()
-  personalOrbDismissed.value = true
-}
-
-async function initFloatingWindow() {
-  if (isSettingsView || isPlatformView) return
-  const api = await loadTauriWindowApi()
-  if (!api) return
-  const appWindow = api.getCurrentWindow()
-  if (!settings.value.personalFloatingEnabled) {
-    personalOrbDismissed.value = false
-    await appWindow.hide()
-    return
-  }
-  if (personalOrbDismissed.value) return
-
-  if (floatingWindowInitialized) {
-    await appWindow.show()
-    return
-  }
-
-  const state = loadFloatingState()
-  personalCollapsed.value = state.collapsed
-  await appWindow.setShadow(false)
-
-  if (state.collapsed) {
-    await appWindow.setSize(new api.LogicalSize(collapsedSize.width, collapsedSize.height))
-  } else {
-    await appWindow.setSize(new api.LogicalSize(expandedSize.width, expandedSize.height))
-  }
-
-  if (typeof state.x === 'number' && typeof state.y === 'number') {
-    await appWindow.setPosition(new api.PhysicalPosition(state.x, state.y))
-  }
-
-  unlistenMoved = await appWindow.onMoved((event) => {
-    const current = loadFloatingState()
-    if (personalCollapsed.value) {
-      saveFloatingState({ ...current, x: event.payload.x, y: event.payload.y })
-      return
-    }
-    saveFloatingState({
-      ...current,
-      x: event.payload.x,
-      y: event.payload.y,
-      expandedX: event.payload.x,
-      expandedY: event.payload.y
-    })
-  })
-  floatingWindowInitialized = true
-  await appWindow.show()
+  } catch { return }
 }
 
 async function loadTauriWindowApi(): Promise<TauriWindowApi | null> {
@@ -1513,99 +672,124 @@ async function loadTauriWindowApi(): Promise<TauriWindowApi | null> {
   try {
     tauriWindowApi = await import('@tauri-apps/api/window')
     return tauriWindowApi
-  } catch {
-    return null
-  }
+  } catch { return null }
 }
 
-function loadFloatingState(): FloatingState {
-  const fallback: FloatingState = { x: null, y: null, collapsed: false, expandedX: null, expandedY: null }
-  const raw = localStorage.getItem(floatingStorageKey)
-  if (!raw) return fallback
+async function initAppVersion() {
   try {
-    const parsed = JSON.parse(raw) as Partial<FloatingState>
-    return {
-      x: typeof parsed.x === 'number' ? parsed.x : null,
-      y: typeof parsed.y === 'number' ? parsed.y : null,
-      collapsed: parsed.collapsed === true,
-      expandedX: typeof parsed.expandedX === 'number' ? parsed.expandedX : null,
-      expandedY: typeof parsed.expandedY === 'number' ? parsed.expandedY : null
+    const { getVersion } = await import('@tauri-apps/api/app')
+    appVersion.value = await getVersion()
+  } catch { return }
+}
+
+async function checkPlatformUpdate() {
+  if (!('__TAURI_INTERNALS__' in window)) return
+  try {
+    const { check } = await import('@tauri-apps/plugin-updater')
+    platformUpdateAvailable.value = (await check()) !== null
+  } catch { platformUpdateAvailable.value = false }
+}
+
+async function checkForAppUpdate() {
+  updateState.value = 'checking'
+  updateMessage.value = '正在检查更新...'
+  try {
+    if (!('__TAURI_INTERNALS__' in window)) throw new Error('请在桌面应用中检查更新')
+    const { check } = await import('@tauri-apps/plugin-updater')
+    const update = await check()
+    if (!update) {
+      updateState.value = 'latest'
+      updateMessage.value = '当前已经是最新版本。'
+      return
     }
-  } catch {
-    return fallback
+    availableUpdate = update
+    updateVersion.value = update.version
+    updateBody.value = update.body || ''
+    updateState.value = 'available'
+    updateMessage.value = '发现新版本。'
+  } catch (error) {
+    updateState.value = 'error'
+    updateMessage.value = errorMessageOf(error, '检查更新失败')
   }
 }
 
-function saveFloatingState(state: FloatingState) {
-  localStorage.setItem(floatingStorageKey, JSON.stringify(state))
-}
-
-function formatResetRemain(value: string | null): string {
-  if (!value) return '--'
-  const resetAt = Date.parse(value)
-  if (!Number.isFinite(resetAt)) return '--'
-  const remainingMs = resetAt - Date.now()
-  if (remainingMs <= 0) return '0m'
-  const totalMinutes = Math.ceil(remainingMs / 60000)
-  const days = Math.floor(totalMinutes / (24 * 60))
-  const hours = Math.floor((totalMinutes % (24 * 60)) / 60)
-  const minutes = totalMinutes % 60
-  if (days > 0) return `${days}d ${hours}h ${minutes}m`
-  if (hours <= 0) return `${minutes}m`
-  return `${hours}h ${minutes}m`
-}
-
-function formatPoolResetItem(item: PoolResetItem) {
-  const date = new Date(item.resetAt)
-  return {
-    resetAt: item.resetAt,
-    statusClass: item.status,
-    statusText: item.status === 'limited' ? '限流中' : '正常',
-    displayTime: Number.isNaN(date.getTime())
-      ? '--'
-      : date.toLocaleString('zh-CN', {
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false
-      })
+async function installAppUpdate() {
+  if (!availableUpdate) return
+  updateState.value = 'downloading'
+  downloadPercent.value = 0
+  try {
+    await availableUpdate.download((event) => {
+      if (event.event === 'Progress') downloadPercent.value = Math.min(100, (downloadPercent.value ?? 0) + 1)
+      if (event.event === 'Finished') downloadPercent.value = 100
+    })
+    await availableUpdate.install()
+    updateState.value = 'installed'
+    updateMessage.value = '更新已安装，重启后生效。'
+  } catch (error) {
+    updateState.value = 'error'
+    updateMessage.value = errorMessageOf(error, '更新安装失败')
   }
+}
+
+async function restartApp() {
+  try { await (await import('@tauri-apps/plugin-process')).relaunch() } catch { return }
+}
+
+function syncExternalSettingsChange(event: StorageEvent) {
+  if (event.key !== settingsStorageKey || event.newValue === null) return
+  settings.value = loadSettings()
+  Object.assign(draft, createDraft(settings.value))
+  syncWidgetPreferences()
+  scheduleRefresh(0)
+}
+
+function onVisibilityChange() {
+  syncRefreshVisibility()
 }
 
 onMounted(() => {
   window.addEventListener('storage', syncExternalSettingsChange)
+  document.addEventListener('visibilitychange', onVisibilityChange)
+  void initAppVersion()
   if (isTrayMenuView) {
-    void initAppVersion()
     void checkPlatformUpdate()
     return
   }
   if (isUpdaterView) {
-    void initUpdaterView()
+    void checkForAppUpdate()
     return
   }
-  void initAppVersion()
-  scheduleRefresh()
-  void listenForSettingsChanges()
-  void refreshAll()
-  void checkPlatformUpdate()
-  void initFloatingWindow()
-  void resizePlatformWindowToContent()
-})
-
-watch([accountDetailsExpanded, rankingExpanded, selectedAccountStatus, adminMetrics], () => {
-  void resizePlatformWindowToContent()
-})
-
-watch([updateState, updateBody, downloadPercent], () => {
-  void resizeUpdaterWindowToContent()
+  if (!isSettingsView) syncWidgetPreferences()
+  if (configured.value) scheduleRefresh(0)
+  if ('__TAURI_INTERNALS__' in window) {
+    void import('@tauri-apps/api/event').then(async ({ listen }) => {
+      const unlisteners = await Promise.all([
+        listen('token-orb-settings-updated', () => {
+          settings.value = loadSettings()
+          Object.assign(draft, createDraft(settings.value))
+          syncWidgetPreferences()
+          scheduleRefresh(0)
+        }),
+        listen('token-orb-open-settings', () => {
+          void openSettings()
+        }),
+        listen<boolean>('token-orb-monitor-visibility', ({ payload }) => {
+          if (payload) scheduleRefresh(0)
+          else stopRefresh()
+        })
+      ])
+      ;[unlistenSettingsChanged, unlistenMonitorVisibility] = unlisteners
+    }).catch(() => undefined)
+  }
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('storage', syncExternalSettingsChange)
-  if (timer !== null) window.clearInterval(timer)
-  if (saveMessageTimer !== null) window.clearTimeout(saveMessageTimer)
-  if (unlistenMoved) unlistenMoved()
+  document.removeEventListener('visibilitychange', onVisibilityChange)
+  stopRefresh()
+  if (collapseTimer !== null) window.clearTimeout(collapseTimer)
+  if (hoverExpandTimer !== null) window.clearTimeout(hoverExpandTimer)
   if (unlistenSettingsChanged) unlistenSettingsChanged()
+  if (unlistenMonitorVisibility) unlistenMonitorVisibility()
 })
 </script>

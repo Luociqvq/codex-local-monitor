@@ -1,10 +1,20 @@
 {
-  "name": "token-orb",
-  "version": "0.4.12",
+  "name": "sub2api-pulse",
+  "version": "0.4.13",
+  "description": "A compact desktop monitor for sub2api usage, account pools, server health, and Codex concurrency.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Luociqvq/sub2api-pulse.git"
+  },
+  "homepage": "https://github.com/Luociqvq/sub2api-pulse#readme",
+  "bugs": {
+    "url": "https://github.com/Luociqvq/sub2api-pulse/issues"
+  },
   "release": {
     "notes": [
       "统一用户用量榜与模型明细的缓存时间，避免总量和明细不一致",
-      "修复慢用户模型明细在定时刷新后永久停留加载状态"
+      "修复慢用户模型明细在定时刷新后永久停留加载状态",
+      "优化 Windows 后台轮询、HTTP 连接复用与发布构建"
     ]
   },
   "private": true,

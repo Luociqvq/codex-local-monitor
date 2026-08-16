@@ -4,6 +4,17 @@ import { defineConfig } from 'vite'
 
 export default defineConfig({
   plugins: [vue()],
+  build: {
+    target: 'es2022',
+    minify: 'esbuild',
+    sourcemap: false,
+    modulePreload: {
+      polyfill: false
+    }
+  },
+  esbuild: {
+    legalComments: 'none'
+  },
   server: {
     host: '127.0.0.1',
     port: 1420,

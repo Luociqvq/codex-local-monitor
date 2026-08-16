@@ -8,7 +8,7 @@
     <text x="76" y="170" fill="#94A3B8" font-size="17">http://172.16.5.12:8081</text>
     <text x="58" y="218" fill="#CBD5E1" font-size="16" font-weight="700">管理员 API Key</text>
     <rect x="58" y="232" width="524" height="46" rx="12" fill="#020617" stroke="#475569"/>
-    <text x="76" y="262" fill="#94A3B8" font-size="17">sk-admin-demo-token</text>
+    <text x="76" y="262" fill="#94A3B8" font-size="17">ADMIN_API_KEY</text>
     <text x="58" y="310" fill="#CBD5E1" font-size="16" font-weight="700">个人 JWT / Bearer Token（可选）</text>
     <rect x="58" y="324" width="524" height="46" rx="12" fill="#020617" stroke="#475569"/>
     <text x="76" y="354" fill="#94A3B8" font-size="17">Bearer demo-user-token</text>
