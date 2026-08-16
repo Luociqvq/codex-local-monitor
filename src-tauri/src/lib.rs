@@ -556,7 +556,8 @@ mod tests {
         // the right-edge calculation correct on high-DPI monitors.
         assert_eq!(WIDGET_ORB_WIDTH as u32, 166);
         assert_eq!(WIDGET_CARD_HEIGHT as u32, 382);
-        assert_eq!(WIDGET_SETUP_HEIGHT as u32, 440);
+        assert_eq!(WIDGET_SETUP_HEIGHT as u32, 490);
+        assert_eq!(WIDGET_SETTINGS_HEIGHT as u32, 620);
     }
 
     #[test]
