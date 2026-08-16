@@ -60,9 +60,9 @@ pub fn run() {
                 .separator()
                 .text("quit", "退出")
                 .build()
-                .map_err(|error| format!("Sub2API Pulse 托盘菜单初始化失败: {error}"))?;
+                .map_err(|error| format!("Codex Local Monitor 托盘菜单初始化失败: {error}"))?;
             let tray_icon = Image::from_bytes(include_bytes!("../icons/tray.png"))
-                .map_err(|error| format!("Sub2API Pulse 托盘图标加载失败: {error}"))?;
+                .map_err(|error| format!("Codex Local Monitor 托盘图标加载失败: {error}"))?;
 
             let tray_result = TrayIconBuilder::with_id("main")
                 .icon(tray_icon)
@@ -70,10 +70,10 @@ pub fn run() {
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| {
                     if let Err(error) = tray_command(app.clone(), event.id().as_ref().to_string()) {
-                        eprintln!("Sub2API Pulse 托盘菜单命令失败: {error}");
+                        eprintln!("Codex Local Monitor 托盘菜单命令失败: {error}");
                     }
                 })
-                .tooltip("Sub2API Pulse")
+                .tooltip("Codex Local Monitor")
                 .on_tray_icon_event(move |_tray, event| {
                     if let TrayIconEvent::Click {
                         button,
@@ -97,7 +97,7 @@ pub fn run() {
             if let Err(error) = tray_result {
                 // Some restricted Windows desktop sessions do not expose the
                 // notification-area API. Keep the monitor usable in that case.
-                eprintln!("Sub2API Pulse 托盘初始化失败，继续运行监控窗口: {error}");
+                eprintln!("Codex Local Monitor 托盘初始化失败，继续运行监控窗口: {error}");
             }
 
             // Keep the dashboard visible from the first launch. It renders the
@@ -299,7 +299,7 @@ fn sub2api_client() -> Result<&'static reqwest::Client, String> {
                 .pool_idle_timeout(Duration::from_secs(90))
                 .pool_max_idle_per_host(4)
                 .tcp_keepalive(Duration::from_secs(60))
-                .user_agent(concat!("Token-Orb/", env!("CARGO_PKG_VERSION")))
+                .user_agent(concat!("Codex-Local-Monitor/", env!("CARGO_PKG_VERSION")))
                 .build()
                 .map_err(|error| format!("初始化 HTTP 客户端失败: {error}"))
         })
@@ -386,7 +386,7 @@ fn open_monitor<R: Runtime>(app: &AppHandle<R>, tray_rect: Option<tauri::Rect>) 
         "platform",
         WebviewUrl::App("index.html?view=platform".into()),
     )
-    .title("Sub2API Pulse 监控")
+    .title("Codex Local Monitor")
     // Start large enough for first-run setup. Configured installs resize
     // themselves to the compact orb as soon as the WebView mounts.
     .inner_size(WIDGET_SETUP_WIDTH, WIDGET_SETUP_HEIGHT)
@@ -442,7 +442,7 @@ fn open_update_window<R: Runtime>(app: &AppHandle<R>) {
         "updater",
         WebviewUrl::App("index.html?view=updater".into()),
     )
-    .title("Sub2API Pulse 更新")
+    .title("Codex Local Monitor 更新")
     .inner_size(420.0, 380.0)
     .resizable(false)
     .decorations(true)

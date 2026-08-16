@@ -4,7 +4,7 @@
   <circle cx="42" cy="42" r="10" fill="#FB4D5F"/>
   <circle cx="68" cy="42" r="10" fill="#F59E0B"/>
   <circle cx="94" cy="42" r="10" fill="#64748B"/>
-  <text x="132" y="50" fill="#CBD5E1" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="800">Sub2API Pulse 更新</text>
+  <text x="132" y="50" fill="#CBD5E1" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="800">Codex Local Monitor 更新</text>
 
   <g transform="translate(52 86)">
     <rect width="636" height="310" rx="24" fill="#111827" stroke="#334155" stroke-width="2"/>

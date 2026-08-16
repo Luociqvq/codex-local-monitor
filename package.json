@@ -1,14 +1,14 @@
 {
-  "name": "sub2api-pulse",
+  "name": "codex-local-monitor",
   "version": "0.4.13",
-  "description": "A compact desktop monitor for sub2api and CLIProxyAPI usage, accounts, server health, and Codex activity.",
+  "description": "A local Codex desktop monitor with sub2api and CPA/CLIProxyAPI data sources.",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Luociqvq/sub2api-pulse.git"
+    "url": "https://github.com/Luociqvq/codex-local-monitor.git"
   },
-  "homepage": "https://github.com/Luociqvq/sub2api-pulse#readme",
+  "homepage": "https://github.com/Luociqvq/codex-local-monitor#readme",
   "bugs": {
-    "url": "https://github.com/Luociqvq/sub2api-pulse/issues"
+    "url": "https://github.com/Luociqvq/codex-local-monitor/issues"
   },
   "release": {
     "notes": [

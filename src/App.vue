@@ -3,7 +3,7 @@
     <button class="tray-menu-item" type="button" @click="runTrayCommand('monitor')"><Gauge :size="16" /><span>打开监控</span></button>
     <button class="tray-menu-item" type="button" @click="runTrayCommand('settings')"><Settings :size="16" /><span>重新配置</span></button>
     <button class="tray-menu-item" type="button" @click="runTrayCommand('update')"><RefreshCw :size="16" /><span>检查更新</span><i v-if="platformUpdateAvailable" class="tray-menu-update-dot" /></button>
-    <div class="tray-menu-version">Sub2API Pulse v{{ appVersion }}</div>
+    <div class="tray-menu-version">Codex Local Monitor v{{ appVersion }}</div>
     <div class="tray-menu-separator" />
     <button class="tray-menu-item tray-menu-item--quit" type="button" @click="runTrayCommand('quit')"><Power :size="16" /><span>退出</span></button>
   </main>
@@ -26,10 +26,10 @@
   <main v-else-if="isSettingsView || showInlineSettings" class="utility-shell settings-shell">
     <section class="utility-panel settings-panel">
       <header class="utility-header"><div class="title-with-icon"><SlidersHorizontal :size="17" /><strong>连接设置</strong></div><button class="icon-button" type="button" title="关闭" @click="closeWindow"><X :size="17" /></button></header>
-      <p class="settings-caption">{{ draft.dataSource === 'cliproxyapi' ? 'CLIProxyAPI / Management API' : 'sub2api / 管理与个人用量' }}</p>
+      <p class="settings-caption">{{ draft.dataSource === 'cliproxyapi' ? 'CPA / CLIProxyAPI · Management API' : 'sub2api / 管理与个人用量' }}</p>
       <div class="setup-steps"><span class="is-active">01</span><i /><span>连接</span><i /><span>显示</span></div>
       <form class="settings-form" @submit.prevent="saveDraft">
-        <fieldset class="source-picker"><legend>数据源</legend><label :class="{ active: draft.dataSource === 'sub2api' }"><input v-model="draft.dataSource" type="radio" value="sub2api" /><span><strong>sub2api</strong><small>用量、费用、账号池</small></span></label><label :class="{ active: draft.dataSource === 'cliproxyapi' }"><input v-model="draft.dataSource" type="radio" value="cliproxyapi" /><span><strong>CLIProxyAPI</strong><small>服务与账户状态</small></span></label></fieldset>
+        <fieldset class="source-picker"><legend>数据源</legend><label :class="{ active: draft.dataSource === 'sub2api' }"><input v-model="draft.dataSource" type="radio" value="sub2api" /><span><strong>sub2api</strong><small>用量、费用、账号池</small></span></label><label :class="{ active: draft.dataSource === 'cliproxyapi' }"><input v-model="draft.dataSource" type="radio" value="cliproxyapi" /><span><strong>CPA / CLIProxyAPI</strong><small>服务与账户状态</small></span></label></fieldset>
         <label class="field"><span>服务器地址</span><div class="input-wrap"><Link2 :size="14" /><input v-model="draft.sub2apiBaseUrl" autocomplete="url" :placeholder="draft.dataSource === 'cliproxyapi' ? 'http://127.0.0.1:8317' : 'http://127.0.0.1:8081'" /></div></label>
         <template v-if="draft.dataSource === 'sub2api'"><label class="field"><span>管理员 API Key <em>账号、服务器与 Codex</em></span><div class="input-wrap"><KeyRound :size="14" /><input v-model="draft.adminApiKey" autocomplete="off" type="password" placeholder="读取管理员指标" /></div></label><label class="field"><span>个人 Token <em>可选</em></span><div class="input-wrap"><KeyRound :size="14" /><input v-model="draft.personalToken" autocomplete="off" type="password" placeholder="读取个人 Token" /></div></label><label class="field"><span>账号池分组 <em>可选</em></span><div class="input-wrap"><Database :size="14" /><input v-model="draft.poolGroupName" placeholder="留空统计全部账号" /></div></label></template>
         <label v-else class="field"><span>Management Key <em>只读管理接口</em></span><div class="input-wrap"><KeyRound :size="14" /><input v-model="draft.cliProxyManagementKey" autocomplete="off" type="password" placeholder="remote-management.secret-key" /></div></label>
@@ -77,7 +77,7 @@
         <footer class="widget-footer"><span><i class="footer-led" :class="connectionState" />{{ refreshLabel }}</span><button type="button" class="collapse-button" title="收起悬浮窗" aria-label="收起悬浮窗" @mousedown.stop @click.stop="collapseWidget"><ChevronDown :size="14" /></button></footer>
       </section>
 
-      <section v-if="!configured" class="onboarding quota-card quota-card--idle"><header class="card-header" data-tauri-drag-region @mousedown.stop="handleSurfaceMouseDown"><div class="card-title"><p class="eyebrow">SUB2API PULSE</p><p class="updated">连接监控数据源</p></div><span class="drag-cue" title="拖动悬浮窗"><GripHorizontal :size="13" aria-hidden="true" /></span><Sparkles :size="20" class="setup-mark" aria-hidden="true" /></header><p class="setup-intro">支持 sub2api 与 CLIProxyAPI，先选择数据源并填写只读凭据。</p><form class="quick-setup" @submit.prevent="saveDraft"><fieldset class="source-picker source-picker--compact"><legend>数据源</legend><label :class="{ active: draft.dataSource === 'sub2api' }"><input v-model="draft.dataSource" type="radio" value="sub2api" /><span><strong>sub2api</strong></span></label><label :class="{ active: draft.dataSource === 'cliproxyapi' }"><input v-model="draft.dataSource" type="radio" value="cliproxyapi" /><span><strong>CLIProxyAPI</strong></span></label></fieldset><label class="field"><span>服务器地址</span><div class="input-wrap"><Link2 :size="14" /><input v-model="draft.sub2apiBaseUrl" autocomplete="url" type="url" :placeholder="draft.dataSource === 'cliproxyapi' ? 'http://127.0.0.1:8317' : 'http://127.0.0.1:8081'" /></div></label><template v-if="draft.dataSource === 'sub2api'"><label class="field"><span>管理员 API Key <em>可选</em></span><div class="input-wrap"><KeyRound :size="14" /><input v-model="draft.adminApiKey" autocomplete="off" type="password" placeholder="管理员 API Key" /></div></label><label class="field"><span>个人 Token <em>可选</em></span><div class="input-wrap"><KeyRound :size="14" /><input v-model="draft.personalToken" autocomplete="off" type="password" placeholder="个人用量 Token" /></div></label></template><label v-else class="field"><span>Management Key</span><div class="input-wrap"><KeyRound :size="14" /><input v-model="draft.cliProxyManagementKey" autocomplete="off" type="password" placeholder="remote-management.secret-key" /></div></label><p v-if="formError" class="form-error" role="alert"><AlertTriangle :size="14" />{{ formError }}</p><button class="primary-button primary-button--wide" type="submit"><Wifi :size="15" />连接并开始监控</button></form><button class="text-button" type="button" @click="openSettings">打开完整配置</button></section>
+      <section v-if="!configured" class="onboarding quota-card quota-card--idle"><header class="card-header" data-tauri-drag-region @mousedown.stop="handleSurfaceMouseDown"><div class="card-title"><p class="eyebrow">CODEX LOCAL MONITOR</p><p class="updated">连接监控数据源</p></div><span class="drag-cue" title="拖动悬浮窗"><GripHorizontal :size="13" aria-hidden="true" /></span><Sparkles :size="20" class="setup-mark" aria-hidden="true" /></header><p class="setup-intro">支持 sub2api 与 CPA / CLIProxyAPI，先选择数据源并填写只读凭据。</p><form class="quick-setup" @submit.prevent="saveDraft"><fieldset class="source-picker source-picker--compact"><legend>数据源</legend><label :class="{ active: draft.dataSource === 'sub2api' }"><input v-model="draft.dataSource" type="radio" value="sub2api" /><span><strong>sub2api</strong></span></label><label :class="{ active: draft.dataSource === 'cliproxyapi' }"><input v-model="draft.dataSource" type="radio" value="cliproxyapi" /><span><strong>CPA / CLIProxyAPI</strong></span></label></fieldset><label class="field"><span>服务器地址</span><div class="input-wrap"><Link2 :size="14" /><input v-model="draft.sub2apiBaseUrl" autocomplete="url" type="url" :placeholder="draft.dataSource === 'cliproxyapi' ? 'http://127.0.0.1:8317' : 'http://127.0.0.1:8081'" /></div></label><template v-if="draft.dataSource === 'sub2api'"><label class="field"><span>管理员 API Key <em>可选</em></span><div class="input-wrap"><KeyRound :size="14" /><input v-model="draft.adminApiKey" autocomplete="off" type="password" placeholder="管理员 API Key" /></div></label><label class="field"><span>个人 Token <em>可选</em></span><div class="input-wrap"><KeyRound :size="14" /><input v-model="draft.personalToken" autocomplete="off" type="password" placeholder="个人用量 Token" /></div></label></template><label v-else class="field"><span>Management Key</span><div class="input-wrap"><KeyRound :size="14" /><input v-model="draft.cliProxyManagementKey" autocomplete="off" type="password" placeholder="remote-management.secret-key" /></div></label><p v-if="formError" class="form-error" role="alert"><AlertTriangle :size="14" />{{ formError }}</p><button class="primary-button primary-button--wide" type="submit"><Wifi :size="15" />连接并开始监控</button></form><button class="text-button" type="button" @click="openSettings">打开完整配置</button></section>
     </section>
   </main>
 </template>
@@ -274,7 +274,7 @@ const codexStatusLabel = computed(() => isCliProxy.value
 const codexHeadline = computed(() => isCliProxy.value
   ? (adminMetrics.value.poolAccounts ? `${adminMetrics.value.poolAccounts.active} 个账户可调度` : '等待账户状态')
   : ({ running: '正在处理 Codex 任务', queued: '任务等待调度', idle: '当前没有活动任务', error: 'Codex 任务异常', unknown: '等待任务状态' }[codexStatus.value]))
-const codexDetail = computed(() => isCliProxy.value ? 'CLIProxyAPI Management API · 只读' : codexStatus.value === 'unknown' ? '当前部署未返回任务队列指标' : `${endpointLabel.value} · 低频采样`)
+const codexDetail = computed(() => isCliProxy.value ? 'CPA / CLIProxyAPI Management API · 只读' : codexStatus.value === 'unknown' ? '当前部署未返回任务队列指标' : `${endpointLabel.value} · 低频采样`)
 const activityPrimaryCount = computed(() => isCliProxy.value ? taskCount(adminMetrics.value.poolAccounts?.active) : taskCount(adminMetrics.value.activeCodexTasks))
 const activitySecondaryCount = computed(() => isCliProxy.value ? taskCount(adminMetrics.value.poolAccounts?.error) : taskCount(adminMetrics.value.queuedCodexTasks))
 const activityPrimaryLabel = computed(() => isCliProxy.value ? '可用' : '运行')
@@ -471,7 +471,7 @@ async function refreshAll() {
           managementKey: settings.value.cliProxyManagementKey
         })
       } catch (error) {
-        errors.push(errorMessageOf(error, 'CLIProxyAPI 接口请求失败'))
+        errors.push(errorMessageOf(error, 'CPA / CLIProxyAPI 接口请求失败'))
       }
     } else if (hasAdmin.value) {
       try {
@@ -541,7 +541,7 @@ function validateDraft(): boolean {
     return false
   }
   if (draft.dataSource === 'cliproxyapi' && !draft.cliProxyManagementKey.trim()) {
-    formError.value = '请填写 CLIProxyAPI Management Key'
+    formError.value = '请填写 CPA / CLIProxyAPI Management Key'
     return false
   }
   if (draft.dataSource === 'sub2api' && !draft.adminApiKey.trim() && !draft.personalToken.trim()) {

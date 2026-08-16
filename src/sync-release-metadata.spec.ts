@@ -21,9 +21,9 @@ afterEach(() => {
 
 describe('syncReleaseMetadata', () => {
   it('从 package.json 读取版本和发布说明', () => {
-    const fixture = createSub2ApiPulseFixture({
+    const fixture = createCodexLocalMonitorFixture({
       packageJson: {
-        name: 'sub2api-pulse',
+        name: 'codex-local-monitor',
         version: '1.2.3',
         release: {
           notes: ['新增自动同步版本信息', '修复 Release 说明来源分散的问题'],
@@ -34,15 +34,15 @@ describe('syncReleaseMetadata', () => {
     expect(readReleaseMetadata(fixture.rootDir)).toEqual({
       version: '1.2.3',
       tag: 'v1.2.3',
-      releaseName: 'Sub2API Pulse v1.2.3',
+      releaseName: 'Codex Local Monitor v1.2.3',
       releaseBody: '新增自动同步版本信息\n修复 Release 说明来源分散的问题',
     })
   })
 
   it('把 package.json version 同步到所有发布相关文件', () => {
-    const fixture = createSub2ApiPulseFixture({
+    const fixture = createCodexLocalMonitorFixture({
       packageJson: {
-        name: 'sub2api-pulse',
+        name: 'codex-local-monitor',
         version: '1.2.3',
         release: {
           notes: '统一维护版本号和更新记录',
@@ -56,13 +56,13 @@ describe('syncReleaseMetadata', () => {
     expect(JSON.parse(read('package-lock.json', fixture)).packages[''].version).toBe('1.2.3')
     expect(JSON.parse(read('src-tauri/tauri.conf.json', fixture)).version).toBe('1.2.3')
     expect(read('src-tauri/Cargo.toml', fixture)).toContain('version = "1.2.3"')
-    expect(read('src-tauri/Cargo.lock', fixture)).toContain('name = "sub2api-pulse"\nversion = "1.2.3"')
+    expect(read('src-tauri/Cargo.lock', fixture)).toContain('name = "codex-local-monitor"\nversion = "1.2.3"')
   })
 
   it('支持 Windows CRLF 换行的 Cargo.lock', () => {
-    const fixture = createSub2ApiPulseFixture({
+    const fixture = createCodexLocalMonitorFixture({
       packageJson: {
-        name: 'sub2api-pulse',
+        name: 'codex-local-monitor',
         version: '1.2.3',
         release: {
           notes: '统一维护版本号和更新记录',
@@ -72,20 +72,20 @@ describe('syncReleaseMetadata', () => {
 
     writeFileSync(path.join(fixture.rootDir, 'src-tauri', 'Cargo.lock'), [
       '[[package]]',
-      'name = "sub2api-pulse"',
+      'name = "codex-local-monitor"',
       'version = "0.0.1"',
       '',
     ].join('\r\n'))
 
     syncReleaseMetadata(fixture.rootDir)
 
-    expect(read('src-tauri/Cargo.lock', fixture)).toContain('name = "sub2api-pulse"\r\nversion = "1.2.3"')
+    expect(read('src-tauri/Cargo.lock', fixture)).toContain('name = "codex-local-monitor"\r\nversion = "1.2.3"')
   })
 
   it('拒绝缺失发布说明，避免 GitHub Release 继续写死在 workflow', () => {
-    const fixture = createSub2ApiPulseFixture({
+    const fixture = createCodexLocalMonitorFixture({
       packageJson: {
-        name: 'sub2api-pulse',
+        name: 'codex-local-monitor',
         version: '1.2.3',
       },
     })
@@ -94,9 +94,9 @@ describe('syncReleaseMetadata', () => {
   })
 
   it('输出 GitHub Actions 可读取的 release body', () => {
-    const fixture = createSub2ApiPulseFixture({
+    const fixture = createCodexLocalMonitorFixture({
       packageJson: {
-        name: 'sub2api-pulse',
+        name: 'codex-local-monitor',
         version: '1.2.3',
         release: {
           notes: '第一行\n第二行',
@@ -107,40 +107,40 @@ describe('syncReleaseMetadata', () => {
 
     writeGithubOutput(syncReleaseMetadata(fixture.rootDir), outputPath)
 
-    expect(readFileSync(outputPath, 'utf8')).toContain('release_body<<SUB2API_PULSE_RELEASE_BODY\n第一行\n第二行\nSUB2API_PULSE_RELEASE_BODY')
+    expect(readFileSync(outputPath, 'utf8')).toContain('release_body<<CODEX_LOCAL_MONITOR_RELEASE_BODY\n第一行\n第二行\nCODEX_LOCAL_MONITOR_RELEASE_BODY')
   })
 })
 
-function createSub2ApiPulseFixture({ packageJson }: { packageJson: Record<string, unknown> }) {
+function createCodexLocalMonitorFixture({ packageJson }: { packageJson: Record<string, unknown> }) {
   const fixture = createFixture({})
   fixtures.push(fixture)
 
   mkdirSync(path.join(fixture.rootDir, 'src-tauri'), { recursive: true })
   writeFileSync(path.join(fixture.rootDir, 'package.json'), `${JSON.stringify(packageJson, null, 2)}\n`)
   writeFileSync(path.join(fixture.rootDir, 'package-lock.json'), JSON.stringify({
-    name: 'sub2api-pulse',
+    name: 'codex-local-monitor',
     version: '0.0.1',
     lockfileVersion: 3,
     packages: {
       '': {
-        name: 'sub2api-pulse',
+        name: 'codex-local-monitor',
         version: '0.0.1',
       },
     },
   }, null, 2))
   writeFileSync(path.join(fixture.rootDir, 'src-tauri', 'tauri.conf.json'), JSON.stringify({
-    productName: 'Sub2API Pulse',
+    productName: 'Codex Local Monitor',
     version: '0.0.1',
   }, null, 2))
   writeFileSync(path.join(fixture.rootDir, 'src-tauri', 'Cargo.toml'), [
     '[package]',
-    'name = "sub2api-pulse"',
+    'name = "codex-local-monitor"',
     'version = "0.0.1"',
     '',
   ].join('\n'))
   writeFileSync(path.join(fixture.rootDir, 'src-tauri', 'Cargo.lock'), [
     '[[package]]',
-    'name = "sub2api-pulse"',
+    'name = "codex-local-monitor"',
     'version = "0.0.1"',
     '',
   ].join('\n'))

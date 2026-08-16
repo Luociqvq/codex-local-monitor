@@ -22,7 +22,7 @@ export function readReleaseMetadata(rootDir) {
   return {
     version,
     tag: `v${version}`,
-    releaseName: `Sub2API Pulse v${version}`,
+    releaseName: `Codex Local Monitor v${version}`,
     releaseBody: notes,
   }
 }
@@ -186,10 +186,10 @@ function heredocOutput(name, value) {
 
 function uniqueDelimiter(value) {
   let index = 0
-  let delimiter = 'SUB2API_PULSE_RELEASE_BODY'
+  let delimiter = 'CODEX_LOCAL_MONITOR_RELEASE_BODY'
   while (value.includes(delimiter)) {
     index += 1
-    delimiter = `SUB2API_PULSE_RELEASE_BODY_${index}`
+    delimiter = `CODEX_LOCAL_MONITOR_RELEASE_BODY_${index}`
   }
   return delimiter
 }
@@ -206,7 +206,7 @@ function main() {
 }
 
 export function createFixture(files) {
-  const rootDir = mkdtempSync(path.join(tmpdir(), 'sub2api-pulse-release-'))
+  const rootDir = mkdtempSync(path.join(tmpdir(), 'codex-local-monitor-release-'))
   for (const [relativePath, content] of Object.entries(files)) {
     const filePath = path.join(rootDir, relativePath)
     writeFileSync(filePath, content)

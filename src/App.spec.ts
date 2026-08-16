@@ -126,7 +126,7 @@ function setTauri(enabled = true) {
   else delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
 }
 
-describe('Sub2API Pulse dashboard', () => {
+describe('Codex Local Monitor dashboard', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.clearAllMocks()
@@ -391,7 +391,7 @@ describe('Sub2API Pulse dashboard', () => {
     expect(wrapper.text()).toContain('打开监控')
     expect(wrapper.text()).toContain('重新配置')
     expect(wrapper.text()).toContain('检查更新')
-    expect(wrapper.text()).toContain('Sub2API Pulse v0.4.13')
+    expect(wrapper.text()).toContain('Codex Local Monitor v0.4.13')
     await wrapper.get('.tray-menu-item').trigger('click')
     await flushPromises()
     expect(tauri.invoke).toHaveBeenCalledWith('tray_command', { command: 'monitor' })
