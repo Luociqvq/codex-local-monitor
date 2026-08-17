@@ -10,23 +10,23 @@ sub2api 与 CPA / CLIProxyAPI 是可切换的数据源，不是产品名称。�
 
 ## 界面预览
 
-> 预览图使用模拟数据，不包含真实服务器地址或凭据。
+> 以下图片直接截取自 Codex Local Monitor 的真实界面；截图中的地址使用本机示例，凭据只显示掩码，不包含可用密钥。
 
 ### 平台监控
 
-![Codex Local Monitor 平台监控面板](docs/images/platform-monitor-demo.svg)
+![Codex Local Monitor 平台监控面板真实截图](docs/images/monitor-real.png)
 
 ### 个人用量
 
-![Codex Local Monitor 个人用量悬浮岛](docs/images/personal-orb-demo.svg)
+![Codex Local Monitor 个人用量悬浮岛真实截图](docs/images/orb-real.png)
 
 ### 连接设置
 
-![Codex Local Monitor 设置界面](docs/images/settings-demo.svg)
+![Codex Local Monitor 设置界面真实截图](docs/images/settings-real.png)
 
 ### 应用更新
 
-![Codex Local Monitor 更新界面](docs/images/updater-demo.svg)
+![Codex Local Monitor 更新界面真实截图](docs/images/updater-real.png)
 
 ## 数据源能力
 
